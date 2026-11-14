@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Vyro</string>
+
+    <!-- Google Sign-In: default web client ID (client_type=3 from google-services.json).
+         google_sign_in_android reads this string resource as the authoritative fallback
+         when webClientId is not explicitly passed in Dart. Included here as a safety net
+         independent of any google-services Gradle plugin resource generation. -->
+    <string name="default_web_client_id" translatable="false">190184825728-15flv3a0pt8ubcm83trsud0unspjuo68.apps.googleusercontent.com</string>
+
+    <!-- Google Play Services version is auto-injected by the google-services plugin;
+         we hard-code a sane fallback to avoid any "R$integer not found" edge cases
+         if the plugin ever skips injection. -->
+    <integer name="google_play_services_version">12451000</integer>
+</resources>

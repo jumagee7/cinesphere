@@ -1,0 +1,92 @@
+name: cinesphere
+description: A premium movie & TV streaming app with Trakt integration.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI & Fonts
+  google_fonts: ^6.2.1
+  flutter_animate: ^4.5.0
+  smooth_page_indicator: ^1.2.0+3
+  percent_indicator: ^4.2.3
+  shimmer: ^3.0.0
+
+  # Images
+  cached_network_image: ^3.4.1
+
+  # Navigation
+  go_router: ^14.3.0
+
+  # State management
+  provider: ^6.1.2
+
+  # Network
+  http: ^1.2.2
+  dio: ^5.7.0
+
+  # ── Video Player ─────────────────────────────────────────────────────────────
+  video_player: ^2.9.2
+  chewie: ^1.8.5
+  # CinMax engine: libmpv / FFmpeg for custom HTTP headers and advanced decoding
+  media_kit: ^1.1.10+1
+  media_kit_video: ^1.2.4
+  media_kit_libs_video: ^1.0.4
+
+  # Subtitle parsing & rendering (SRT / VTT / ASS) — CinMax technique
+  subtitle: ^0.1.4
+
+  # Keep for YouTube trailer playback
+  youtube_player_flutter: ^10.0.1
+  flutter_inappwebview: ^6.1.5
+
+  # Storage / Persistence
+  shared_preferences: ^2.3.3
+  path_provider: ^2.1.5
+  sqflite: ^2.3.2                  # download queue & metadata
+
+  # Wi-Fi-only download guard
+  connectivity_plus: ^6.1.1
+  permission_handler: ^11.3.0      # runtime WRITE_EXTERNAL_STORAGE / READ_MEDIA_VIDEO
+
+  # ── Scraping / Token Decryption (CinMax technique) ──────────────────────────
+  html: ^0.15.6                    # HTML parsing for scraper sources
+  encrypt: ^5.0.3                  # AES decryption for obfuscated video tokens
+
+  # ── Auth / OAuth ─────────────────────────────────────────────────────────────
+  url_launcher: ^6.3.1
+  flutter_secure_storage: ^11.2.0
+  google_sign_in: ^6.2.1
+  crypto: ^3.0.3
+
+  # ── Player UX extras ─────────────────────────────────────────────────────────
+  palette_generator: ^0.3.3+7      # dynamic UI accent colors from poster art
+  screen_brightness: ^2.1.7        # gesture brightness control in player
+  volume_controller: ^3.7.1        # player owns the device volume while open
+  wakelock_plus: ^1.8.0            # override transitive pin to built-in KGP version
+  package_info_plus: ^10.2.2       # override transitive pin to built-in KGP version
+
+  # ── Utils ────────────────────────────────────────────────────────────────────
+  intl: ^0.19.0
+  qr_flutter: ^4.1.0
+  web: ^1.1.0
+  flutter_local_notifications: ^22.3.1
+  timezone: ^0.11.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  video_player_platform_interface: ^6.9.0  # fake player host in widget tests
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/videos/
+    - assets/plugins/

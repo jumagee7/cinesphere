@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "190184825728",
+    "project_id": "cinesphere-4a500",
+    "storage_bucket": "cinesphere-4a500.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:190184825728:android:311d35670efd5890919765",
+        "android_client_info": {
+          "package_name": "com.majumaink.cinesphere"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "190184825728-k8r5s461rhogqkt547h3bn5rfvn1eoqm.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.majumaink.cinesphere",
+            "certificate_hash": "6b21bc4080121d36ed8e9b4abf07ea4a8445cf5b"
+          }
+        },
+        {
+          "client_id": "190184825728-15flv3a0pt8ubcm83trsud0unspjuo68.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDaLHvlFBUEJyfcNeJxje5zLy3MXmyd7Nw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "190184825728-15flv3a0pt8ubcm83trsud0unspjuo68.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

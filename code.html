@@ -1,0 +1,1494 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CineSphere - Premium Movie Streaming & Trakt Integration</title>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <!-- Google Material Symbols -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            background: '#0d0f15',
+            surface: '#12151e',
+            'surface-card': '#1a1e2b',
+            'surface-high': '#232838',
+            'surface-border': 'rgba(255, 255, 255, 0.08)',
+            primary: '#7c4dff',
+            'primary-light': '#b388ff',
+            secondary: '#ff5252',
+            'secondary-coral': '#ff7961',
+            accent: '#00e5ff',
+            trakt: '#ed1c24'
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0d0f15; }
+    ::-webkit-scrollbar-thumb { background: #232838; border-radius: 999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #7c4dff; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    /* Glassmorphism */
+    .glass-nav {
+      background: rgba(18, 21, 30, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .glass-card {
+      background: rgba(26, 30, 43, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .poster-hover:hover .poster-overlay {
+      opacity: 1;
+    }
+    .poster-hover:hover img {
+      transform: scale(1.05);
+    }
+    .tab-btn.active {
+      color: #b388ff;
+      border-bottom: 2px solid #7c4dff;
+    }
+    .mobile-frame {
+      max-width: 440px;
+      margin: 0 auto;
+      border: 8px solid #232838;
+      border-radius: 40px;
+      overflow: hidden;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7);
+      position: relative;
+    }
+  </style>
+</head>
+<body class="bg-background text-gray-100 font-sans antialiased selection:bg-primary selection:text-white min-h-screen flex flex-col">
+
+  <!-- ========================================================================= -->
+  <!-- TOP SYSTEM CONTROLS BAR (PC Desktop vs Mobile View Switcher) -->
+  <!-- ========================================================================= -->
+  <aside aria-label="Device Controls" class="bg-[#090b10] border-b border-white/10 px-4 py-2 flex items-center justify-between text-xs text-gray-400 z-50">
+    <div class="flex items-center gap-2">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+      <span class="font-medium text-gray-200">CineSphere Live Preview</span>
+      <span class="text-gray-500">•</span>
+      <span class="text-gray-400">Trakt API &amp; Auth &bull; Video Player &bull; Settings</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="hidden sm:inline text-gray-400">Viewport Mode:</span>
+      <div class="flex bg-surface-high rounded-lg p-0.5 border border-white/5">
+        <button id="viewPcBtn" onclick="setViewMode('pc')" class="px-2.5 py-1 rounded-md text-xs font-semibold bg-primary text-white flex items-center gap-1 transition-all">
+          <span class="material-symbols-outlined text-[14px]">desktop_windows</span>
+          <span>PC View</span>
+        </button>
+        <button id="viewMobileBtn" onclick="setViewMode('mobile')" class="px-2.5 py-1 rounded-md text-xs font-semibold text-gray-400 hover:text-white flex items-center gap-1 transition-all">
+          <span class="material-symbols-outlined text-[14px]">smartphone</span>
+          <span>Mobile View</span>
+        </button>
+      </div>
+      <button onclick="toggleDemoAuth()" id="quickAuthStatusBtn" class="bg-trakt/20 hover:bg-trakt/30 text-trakt border border-trakt/40 px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition-all">
+        <span class="material-symbols-outlined text-[14px]">sync</span>
+        <span id="quickAuthStatusText">Trakt: Disconnected</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ========================================================================= -->
+  <!-- APP SHELL CONTAINER -->
+  <!-- ========================================================================= -->
+  <div id="appContainer" class="w-full flex-1 flex flex-col transition-all duration-300">
+
+    <!-- TOP HEADER / DESKTOP NAV -->
+    <header class="sticky top-0 z-40 glass-nav">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        
+        <!-- Brand Logo -->
+        <div class="flex items-center gap-6 cursor-pointer" onclick="switchNav('home')">
+          <div class="flex items-center gap-2.5">
+            <img src="assets/images/CineSphere Neon Orbit Logo.png" alt="CineSphere Logo" class="w-9 h-9 rounded-xl object-cover shadow-lg shadow-primary/30 border border-white/10" onerror="this.onerror=null; this.src='assets/images/app_icon.png';">
+            <span class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-white via-gray-200 to-primary-light bg-clip-text text-transparent">CineSphere</span>
+          </div>
+
+          <!-- Desktop Nav Links -->
+          <nav id="desktopNav" class="hidden md:flex items-center gap-1 ml-4 text-sm font-medium text-gray-400">
+            <button onclick="switchNav('home')" data-nav="home" class="nav-item px-3.5 py-1.5 rounded-full text-white bg-white/10 font-semibold transition-all">Home</button>
+            <button onclick="switchNav('explore')" data-nav="explore" class="nav-item px-3.5 py-1.5 rounded-full hover:text-white hover:bg-white/5 transition-all">Explore</button>
+            <button onclick="switchNav('downloads')" data-nav="downloads" class="nav-item px-3.5 py-1.5 rounded-full hover:text-white hover:bg-white/5 transition-all">Downloads</button>
+            <button onclick="switchNav('library')" data-nav="library" class="nav-item px-3.5 py-1.5 rounded-full hover:text-white hover:bg-white/5 transition-all">Library</button>
+            <button onclick="switchNav('settings')" data-nav="settings" class="nav-item px-3.5 py-1.5 rounded-full hover:text-white hover:bg-white/5 transition-all">Settings</button>
+          </nav>
+        </div>
+
+        <!-- Right Header Icons -->
+        <div class="flex items-center gap-3">
+          <button onclick="switchNav('explore')" class="w-9 h-9 rounded-full bg-surface-high/60 hover:bg-surface-high border border-white/5 flex items-center justify-center text-gray-300 hover:text-white transition-all" title="Search">
+            <span class="material-symbols-outlined text-[18px]">search</span>
+          </button>
+          <button onclick="openTraktModal()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-trakt/15 hover:bg-trakt/25 border border-trakt/30 text-trakt text-xs font-semibold transition-all" title="Trakt Status">
+            <span class="material-symbols-outlined text-[16px]">movie_filter</span>
+            <span id="headerTraktLabel">Trakt</span>
+          </button>
+          <button onclick="switchNav('settings')" class="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-white/5 transition-all border border-transparent hover:border-white/10">
+            <img id="headerAvatarImg" src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&q=80" alt="Profile" class="w-7 h-7 rounded-full object-cover border border-primary">
+            <span id="headerUserName" class="hidden sm:inline text-xs font-semibold text-gray-300">Alex</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ======================================================================= -->
+    <!-- MAIN CONTENT VIEW ROUTER -->
+    <!-- ======================================================================= -->
+    <main class="flex-1 pb-20 md:pb-12">
+
+      <!-- 1. HOME SCREEN -->
+      <section id="view-home" class="view-panel block">
+        <!-- Hero Billboard -->
+        <div class="relative w-full h-[460px] md:h-[540px] overflow-hidden bg-surface">
+          <img id="heroBackdrop" src="https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=1600&q=80" alt="Featured Movie" class="w-full h-full object-cover opacity-75">
+          <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent"></div>
+          <div class="absolute inset-0 bg-gradient-to-r from-background via-background/40 to-transparent"></div>
+          
+          <!-- Video Quality Badges positioned at Top Right -->
+          <div id="heroQualityTags" class="absolute top-6 right-6 flex items-center gap-2 z-10">
+            <span class="px-2.5 py-1 rounded-lg bg-black/60 border border-white/15 backdrop-blur-md text-[11px] font-bold text-gray-200 shadow-lg tracking-wider">4K UHD</span>
+            <span class="px-2.5 py-1 rounded-lg bg-black/60 border border-white/15 backdrop-blur-md text-[11px] font-bold text-gray-200 shadow-lg tracking-wider">IMAX</span>
+          </div>
+
+          <div class="absolute bottom-8 left-0 right-0 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="max-w-2xl space-y-4">
+              <div class="flex items-center gap-2">
+                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary text-white text-xs font-bold uppercase tracking-wider shadow-lg">
+                  <span class="material-symbols-outlined text-[14px]">local_fire_department</span>
+                  Trending #1
+                </span>
+                <span class="px-2 py-0.5 rounded-full bg-white/10 backdrop-blur-md text-xs font-semibold">PG-13</span>
+              </div>
+
+              <h1 id="heroTitle" class="text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
+                Chrono Mirage
+              </h1>
+
+              <div class="flex items-center gap-3 text-sm text-gray-300 font-medium">
+                <span class="flex items-center gap-1 text-amber-400 font-bold">
+                  <span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+                  8.9
+                </span>
+                <span>•</span>
+                <span>Sci-Fi • Thriller</span>
+                <span>•</span>
+                <span>2h 24m</span>
+                <span>•</span>
+                <span>2024</span>
+              </div>
+
+              <p id="heroDesc" class="text-sm md:text-base text-gray-300 line-clamp-2 md:line-clamp-3 leading-relaxed">
+                When humanity's final deep-space chronometer records reverse temporal ripples, a rogue team of quantum astrophysicists races across fractured realities to prevent universal collapse.
+              </p>
+
+              <div class="flex flex-wrap items-center gap-3 pt-2">
+                <button onclick="playMovie('Chrono Mirage', 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4')" class="px-6 py-3 rounded-full bg-secondary hover:bg-secondary-coral text-white font-bold flex items-center gap-2 shadow-xl shadow-secondary/30 active:scale-95 transition-all">
+                  <span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+                  <span>Watch Now</span>
+                </button>
+                <button onclick="openDetailModal('Chrono Mirage')" class="px-5 py-3 rounded-full bg-surface-high hover:bg-white/20 text-white font-semibold flex items-center gap-2 border border-white/10 transition-all">
+                  <span class="material-symbols-outlined text-[18px]">info</span>
+                  <span>Details</span>
+                </button>
+                <button onclick="toggleWatchlist('Chrono Mirage')" id="heroWatchlistBtn" class="w-11 h-11 rounded-full bg-surface-high/80 hover:bg-white/20 text-white flex items-center justify-center border border-white/10 transition-all" title="Add to Watchlist">
+                  <span class="material-symbols-outlined text-[20px]">bookmark_border</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Continue Watching Carousel -->
+        <div id="continueWatchingSection" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-10">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-bold flex items-center gap-2 text-white">
+              <span class="w-1.5 h-4 rounded-full bg-primary"></span>
+              Continue Watching
+            </h2>
+            <button onclick="switchNav('library')" class="text-xs font-semibold text-primary-light hover:underline flex items-center gap-1">
+              <span>History</span>
+              <span class="material-symbols-outlined text-[14px]">chevron_right</span>
+            </button>
+          </div>
+          <div id="continueWatchingRow" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Injected via JS -->
+          </div>
+        </div>
+
+        <!-- Top Rated Section -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-10">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-bold flex items-center gap-2 text-white">
+              <span class="w-1.5 h-4 rounded-full bg-secondary"></span>
+              Top Rated For You
+            </h2>
+            <span class="text-xs text-gray-400">Personalized via Trakt</span>
+          </div>
+          <div id="topRatedRow" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            <!-- Injected via JS -->
+          </div>
+        </div>
+
+        <!-- Trending Section -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-10">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-bold flex items-center gap-2 text-white">
+              <span class="w-1.5 h-4 rounded-full bg-accent"></span>
+              Trending on Trakt
+            </h2>
+            <span class="text-xs text-gray-400">Live community charts</span>
+          </div>
+          <div id="trendingRow" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            <!-- Injected via JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. EXPLORE SCREEN -->
+      <section id="view-explore" class="view-panel hidden max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        <!-- Search Bar -->
+        <div class="relative max-w-2xl mx-auto mb-8">
+          <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">search</span>
+          <input type="text" id="searchInput" oninput="handleSearch(this.value)" placeholder="Search movies, TV shows, actors, or genres..." class="w-full bg-surface-card border border-white/10 rounded-full pl-12 pr-12 py-3.5 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-lg transition-all">
+          <button onclick="clearSearch()" id="searchClearBtn" class="hidden absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
+            <span class="material-symbols-outlined text-[18px]">close</span>
+          </button>
+        </div>
+
+        <!-- Genre Pill Filters -->
+        <div class="flex items-center gap-2 overflow-x-auto pb-4 no-scrollbar mb-6" id="exploreGenreFilters">
+          <button onclick="filterGenre('All')" class="genre-pill px-4 py-1.5 rounded-full text-xs font-semibold bg-primary text-white shrink-0 transition-all">All Genres</button>
+          <button onclick="filterGenre('Action')" class="genre-pill px-4 py-1.5 rounded-full text-xs font-semibold bg-surface-card text-gray-300 hover:text-white shrink-0 transition-all">Action</button>
+          <button onclick="filterGenre('Sci-Fi')" class="genre-pill px-4 py-1.5 rounded-full text-xs font-semibold bg-surface-card text-gray-300 hover:text-white shrink-0 transition-all">Sci-Fi</button>
+          <button onclick="filterGenre('Drama')" class="genre-pill px-4 py-1.5 rounded-full text-xs font-semibold bg-surface-card text-gray-300 hover:text-white shrink-0 transition-all">Drama</button>
+          <button onclick="filterGenre('Thriller')" class="genre-pill px-4 py-1.5 rounded-full text-xs font-semibold bg-surface-card text-gray-300 hover:text-white shrink-0 transition-all">Thriller</button>
+          <button onclick="filterGenre('Fantasy')" class="genre-pill px-4 py-1.5 rounded-full text-xs font-semibold bg-surface-card text-gray-300 hover:text-white shrink-0 transition-all">Fantasy</button>
+          <button onclick="filterGenre('Animation')" class="genre-pill px-4 py-1.5 rounded-full text-xs font-semibold bg-surface-card text-gray-300 hover:text-white shrink-0 transition-all">Animation</button>
+        </div>
+
+        <!-- Explore Results Grid -->
+        <div id="exploreGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <!-- Injected via JS -->
+        </div>
+      </section>
+
+      <!-- 3. DOWNLOADS SCREEN -->
+      <section id="view-downloads" class="view-panel hidden max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        <div class="flex items-center justify-between mb-6">
+          <h1 class="text-2xl font-bold text-white">Downloads</h1>
+          <button onclick="switchNav('settings')" class="text-xs text-primary-light hover:underline flex items-center gap-1">
+            <span class="material-symbols-outlined text-[16px]">tune</span>
+            <span>Download Settings</span>
+          </button>
+        </div>
+
+        <!-- Storage Card -->
+        <div class="glass-card rounded-2xl p-5 mb-8">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2 text-sm font-semibold text-white">
+              <span class="material-symbols-outlined text-primary text-[20px]">sd_card</span>
+              <span>Local Storage Used</span>
+            </div>
+            <span class="text-xs text-gray-400">2.6 GB / 8.0 GB</span>
+          </div>
+          <div class="w-full h-2.5 bg-surface-high rounded-full overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-primary to-accent rounded-full" style="width: 32.5%;"></div>
+          </div>
+          <div class="flex justify-between items-center text-[11px] text-gray-400 mt-2">
+            <span>3 Downloads Saved</span>
+            <span>5.4 GB Free Space</span>
+          </div>
+        </div>
+
+        <h2 class="text-base font-bold text-white mb-4">Ready to Watch Offline</h2>
+        <div id="downloadsList" class="space-y-3">
+          <!-- Injected via JS -->
+        </div>
+      </section>
+
+      <!-- 4. LIBRARY SCREEN -->
+      <section id="view-library" class="view-panel hidden max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        <!-- User Profile Card -->
+        <div class="glass-card rounded-2xl p-6 mb-8 flex flex-col sm:flex-row items-center gap-5 justify-between">
+          <div class="flex items-center gap-4 text-center sm:text-left">
+            <img id="libAvatarImg" src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&q=80" alt="Avatar" class="w-16 h-16 rounded-full object-cover border-2 border-primary">
+            <div>
+              <div class="flex items-center gap-2 justify-center sm:justify-start">
+                <h2 id="libUserName" class="text-xl font-bold text-white">Alex Morgan</h2>
+                <span id="libTraktBadge" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-trakt text-white uppercase tracking-wider">Trakt Connected</span>
+              </div>
+              <p id="libUserSubtitle" class="text-xs text-gray-400">Premium Member &bull; Since 2023</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <button onclick="openTraktModal()" class="px-4 py-2 rounded-full border border-trakt/40 text-trakt hover:bg-trakt/10 text-xs font-semibold flex items-center gap-1.5 transition-all">
+              <span class="material-symbols-outlined text-[16px]">sync</span>
+              <span>Trakt Sync</span>
+            </button>
+            <button onclick="switchNav('settings')" class="px-4 py-2 rounded-full bg-primary hover:bg-primary-light text-white text-xs font-semibold flex items-center gap-1.5 transition-all">
+              <span class="material-symbols-outlined text-[16px]">settings</span>
+              <span>Settings</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Library Tabs -->
+        <div class="flex items-center gap-6 border-b border-white/10 mb-6 text-sm font-semibold text-gray-400">
+          <button onclick="switchLibTab('watchlist')" id="libTabWatchlist" class="pb-3 text-primary-light border-b-2 border-primary">Watchlist (<span id="libWatchlistCount">4</span>)</button>
+          <button onclick="switchLibTab('favorites')" id="libTabFavorites" class="pb-3 hover:text-white">Favorites (<span id="libFavoritesCount">6</span>)</button>
+          <button onclick="switchLibTab('history')" id="libTabHistory" class="pb-3 hover:text-white">Watch History (<span id="libHistoryCount">12</span>)</button>
+        </div>
+
+        <!-- Library Content Grid -->
+        <div id="libraryGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <!-- Injected via JS -->
+        </div>
+      </section>
+
+      <!-- 5. SETTINGS SCREEN -->
+      <section id="view-settings" class="view-panel hidden max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        <div class="flex items-center justify-between mb-8">
+          <div>
+            <h1 class="text-2xl font-bold text-white">App Settings</h1>
+            <p class="text-xs text-gray-400">Manage playback, Trakt syncing, video quality, and preferences</p>
+          </div>
+          <button onclick="resetSettings()" class="text-xs text-rose-400 hover:underline">Reset Defaults</button>
+        </div>
+
+        <div class="space-y-6">
+
+          <!-- 1. ACCOUNT -->
+          <div class="glass-card rounded-2xl p-5">
+            <h2 class="text-sm font-bold text-primary-light uppercase tracking-wider mb-4 flex items-center gap-2">
+              <span class="material-symbols-outlined text-[18px]">account_circle</span>
+              Account &amp; Membership
+            </h2>
+            <div class="flex items-center justify-between py-2 border-b border-white/5">
+              <div>
+                <div class="text-sm font-semibold text-white">Profile Name</div>
+                <div class="text-xs text-gray-400">CineSphere VIP Subscriber</div>
+              </div>
+              <span class="text-xs font-semibold text-emerald-400 bg-emerald-400/10 px-2.5 py-1 rounded-full">Active</span>
+            </div>
+          </div>
+
+          <!-- 2. TRAKT SYNC (KEY USER REQUIREMENT) -->
+          <div class="glass-card rounded-2xl p-5 border-l-4 border-l-trakt">
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-sm font-bold text-trakt uppercase tracking-wider flex items-center gap-2">
+                <span class="material-symbols-outlined text-[18px]">movie_filter</span>
+                Trakt.tv Integration &amp; Scrobbling
+              </h2>
+              <button onclick="openTraktModal()" class="px-3 py-1 rounded-full bg-trakt text-white text-xs font-semibold hover:opacity-90 transition-all">
+                Connect Account
+              </button>
+            </div>
+            <p class="text-xs text-gray-400 mb-4">Automatically track movies you watch, sync watchlists, and scrobble playback progress.</p>
+            
+            <div class="space-y-3">
+              <label class="flex items-center justify-between cursor-pointer py-1">
+                <span class="text-sm text-gray-200">Auto-Scrobble at 80% completion</span>
+                <input type="checkbox" id="settingScrobble" checked class="w-4 h-4 accent-primary rounded">
+              </label>
+              <label class="flex items-center justify-between cursor-pointer py-1">
+                <span class="text-sm text-gray-200">Two-way Watchlist Sync</span>
+                <input type="checkbox" id="settingSyncWatchlist" checked class="w-4 h-4 accent-primary rounded">
+              </label>
+              <label class="flex items-center justify-between cursor-pointer py-1">
+                <span class="text-sm text-gray-200">Prompt for Trakt 1-10 Star Rating after viewing</span>
+                <input type="checkbox" id="settingPromptRating" checked class="w-4 h-4 accent-primary rounded">
+              </label>
+
+              <!-- Custom Trakt API credentials input -->
+              <div class="pt-3 border-t border-white/5">
+                <div class="text-xs font-semibold text-gray-300 mb-2">Custom Trakt API Client ID (Optional)</div>
+                <input type="text" id="settingTraktClientId" placeholder="Default CineSphere App ID configured" class="w-full bg-surface-high border border-white/10 rounded-lg px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-primary">
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. PLAYBACK SETTINGS -->
+          <div class="glass-card rounded-2xl p-5">
+            <h2 class="text-sm font-bold text-primary-light uppercase tracking-wider mb-4 flex items-center gap-2">
+              <span class="material-symbols-outlined text-[18px]">play_circle</span>
+              Playback &amp; Streaming
+            </h2>
+            <div class="space-y-3">
+              <div class="flex items-center justify-between py-1">
+                <div>
+                  <div class="text-sm text-gray-200">Default Streaming Quality</div>
+                  <div class="text-xs text-gray-400">Affects bandwidth &amp; resolution</div>
+                </div>
+                <select id="settingQuality" class="bg-surface-high border border-white/10 text-xs rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-primary">
+                  <option value="auto">Auto (Adaptive)</option>
+                  <option value="4k" selected>4K Ultra HD</option>
+                  <option value="1080p">1080p Full HD</option>
+                  <option value="720p">720p HD</option>
+                </select>
+              </div>
+
+              <div class="flex items-center justify-between py-1">
+                <div>
+                  <div class="text-sm text-gray-200">Default Playback Speed</div>
+                  <div class="text-xs text-gray-400">Initial player rate</div>
+                </div>
+                <select id="settingSpeed" class="bg-surface-high border border-white/10 text-xs rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-primary">
+                  <option value="1.0" selected>1.0x (Normal)</option>
+                  <option value="1.25">1.25x</option>
+                  <option value="1.5">1.5x</option>
+                  <option value="2.0">2.0x</option>
+                </select>
+              </div>
+
+              <label class="flex items-center justify-between cursor-pointer py-1">
+                <span class="text-sm text-gray-200">Auto-skip show intros &amp; recaps</span>
+                <input type="checkbox" id="settingSkipIntro" checked class="w-4 h-4 accent-primary rounded">
+              </label>
+
+              <label class="flex items-center justify-between cursor-pointer py-1">
+                <span class="text-sm text-gray-200">Auto-play next episode</span>
+                <input type="checkbox" id="settingAutoNext" checked class="w-4 h-4 accent-primary rounded">
+              </label>
+            </div>
+          </div>
+
+          <!-- 4. SUBTITLES & AUDIO -->
+          <div class="glass-card rounded-2xl p-5">
+            <h2 class="text-sm font-bold text-primary-light uppercase tracking-wider mb-4 flex items-center gap-2">
+              <span class="material-symbols-outlined text-[18px]">subtitles</span>
+              Subtitles &amp; Audio
+            </h2>
+            <div class="space-y-3">
+              <label class="flex items-center justify-between cursor-pointer py-1">
+                <span class="text-sm text-gray-200">Subtitles Enabled by Default</span>
+                <input type="checkbox" id="settingSubtitlesOn" class="w-4 h-4 accent-primary rounded">
+              </label>
+              <div class="flex items-center justify-between py-1">
+                <span class="text-sm text-gray-200">Primary Subtitle Language</span>
+                <select class="bg-surface-high border border-white/10 text-xs rounded-lg px-3 py-1.5 text-white">
+                  <option selected>English</option>
+                  <option>Spanish</option>
+                  <option>French</option>
+                  <option>German</option>
+                  <option>Japanese</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between py-1">
+                <span class="text-sm text-gray-200">Subtitle Font Size</span>
+                <select class="bg-surface-high border border-white/10 text-xs rounded-lg px-3 py-1.5 text-white">
+                  <option>Small</option>
+                  <option selected>Medium</option>
+                  <option>Large</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. DOWNLOADS -->
+          <div class="glass-card rounded-2xl p-5">
+            <h2 class="text-sm font-bold text-primary-light uppercase tracking-wider mb-4 flex items-center gap-2">
+              <span class="material-symbols-outlined text-[18px]">download_for_offline</span>
+              Offline Downloads
+            </h2>
+            <div class="space-y-3">
+              <label class="flex items-center justify-between cursor-pointer py-1">
+                <div>
+                  <div class="text-sm text-gray-200">Download on Wi-Fi only</div>
+                  <div class="text-xs text-gray-400">Save mobile cellular data</div>
+                </div>
+                <input type="checkbox" checked class="w-4 h-4 accent-primary rounded">
+              </label>
+              <div>
+                <div class="flex justify-between text-sm text-gray-200 mb-1">
+                  <span>Max Storage Limit</span>
+                  <span id="storageLimitLabel" class="text-primary-light font-bold">8 GB</span>
+                </div>
+                <input type="range" min="2" max="32" value="8" oninput="document.getElementById('storageLimitLabel').innerText = this.value + ' GB'" class="w-full accent-primary">
+              </div>
+            </div>
+          </div>
+
+          <!-- 6. DISPLAY & THEME -->
+          <div class="glass-card rounded-2xl p-5">
+            <h2 class="text-sm font-bold text-primary-light uppercase tracking-wider mb-4 flex items-center gap-2">
+              <span class="material-symbols-outlined text-[18px]">palette</span>
+              Display &amp; Theme
+            </h2>
+            <div class="space-y-3">
+              <label class="flex items-center justify-between cursor-pointer py-1">
+                <div>
+                  <div class="text-sm text-gray-200">OLED Pure Black Mode</div>
+                  <div class="text-xs text-gray-400">Optimized for OLED &amp; AMOLED displays</div>
+                </div>
+                <input type="checkbox" id="settingOled" onchange="toggleOled(this.checked)" class="w-4 h-4 accent-primary rounded">
+              </label>
+              <label class="flex items-center justify-between cursor-pointer py-1">
+                <span class="text-sm text-gray-200">Show Tech Badges (4K, HDR, IMAX)</span>
+                <input type="checkbox" checked class="w-4 h-4 accent-primary rounded">
+              </label>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ======================================================================= -->
+    <!-- MOBILE BOTTOM NAVIGATION (Active when in mobile view) -->
+    <!-- ======================================================================= -->
+    <nav id="mobileNav" class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface/95 backdrop-blur-lg border-t border-white/10 px-4 py-2 flex items-center justify-around text-xs text-gray-400">
+      <button onclick="switchNav('home')" data-mob-nav="home" class="flex flex-col items-center gap-1 text-primary-light">
+        <span class="material-symbols-outlined text-[22px]">home</span>
+        <span>Home</span>
+      </button>
+      <button onclick="switchNav('explore')" data-mob-nav="explore" class="flex flex-col items-center gap-1 hover:text-white">
+        <span class="material-symbols-outlined text-[22px]">explore</span>
+        <span>Explore</span>
+      </button>
+      <button onclick="switchNav('downloads')" data-mob-nav="downloads" class="flex flex-col items-center gap-1 hover:text-white">
+        <span class="material-symbols-outlined text-[22px]">download_for_offline</span>
+        <span>Downloads</span>
+      </button>
+      <button onclick="switchNav('library')" data-mob-nav="library" class="flex flex-col items-center gap-1 hover:text-white">
+        <span class="material-symbols-outlined text-[22px]">video_library</span>
+        <span>Library</span>
+      </button>
+      <button onclick="switchNav('settings')" data-mob-nav="settings" class="flex flex-col items-center gap-1 hover:text-white">
+        <span class="material-symbols-outlined text-[22px]">settings</span>
+        <span>Settings</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: FULLSCREEN VIDEO PLAYER (WITH TRAKT AUTO-SCROBBLE & RATING) -->
+  <!-- ========================================================================= -->
+  <div id="videoModal" class="fixed inset-0 z-50 bg-black hidden flex-col">
+    <!-- Player Container -->
+    <div class="relative w-full h-full flex items-center justify-center bg-black">
+      <video id="htmlVideo" class="w-full h-full object-contain" playsinline preload="auto">
+        <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+
+      <!-- Video Controls Overlay -->
+      <div id="videoOverlay" class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/60 opacity-100 hover:opacity-100 transition-opacity flex flex-col justify-between p-6">
+        
+        <!-- Top bar -->
+        <div class="flex items-center justify-between text-white">
+          <div class="flex items-center gap-3">
+            <button onclick="closeVideoPlayer()" class="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all">
+              <span class="material-symbols-outlined">arrow_back</span>
+            </button>
+            <div>
+              <h3 id="videoModalTitle" class="text-base font-bold">Chrono Mirage</h3>
+              <p class="text-xs text-gray-300">4K UHD &bull; Dolby Atmos &bull; Trakt Scrobble Enabled</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="scrobbleIndicatorBadge" class="hidden px-2.5 py-1 rounded-full bg-trakt text-white text-xs font-bold flex items-center gap-1 animate-pulse">
+              <span class="material-symbols-outlined text-[14px]">sync</span>
+              <span>Scrobbled</span>
+            </span>
+            <button onclick="openTraktRatingModal()" class="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-xs font-semibold flex items-center gap-1">
+              <span class="material-symbols-outlined text-amber-400 text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+              <span>Rate</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Center Play/Pause & Skips -->
+        <div class="flex items-center justify-center gap-8 text-white">
+          <button onclick="skipVideo(-10)" class="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all active:scale-95" title="Rewind 10s">
+            <span class="material-symbols-outlined text-[24px]">replay_10</span>
+          </button>
+          <button onclick="toggleVideoPlay()" id="playPauseCenterBtn" class="w-16 h-16 rounded-full bg-secondary hover:bg-secondary-coral flex items-center justify-center shadow-2xl active:scale-95 transition-all">
+            <span id="playPauseIcon" class="material-symbols-outlined text-[36px]" style="font-variation-settings: 'FILL' 1;">pause</span>
+          </button>
+          <button onclick="skipVideo(10)" class="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all active:scale-95" title="Forward 10s">
+            <span class="material-symbols-outlined text-[24px]">forward_10</span>
+          </button>
+        </div>
+
+        <!-- Bottom Timeline & Actions -->
+        <div class="space-y-2">
+          <!-- Seek Slider -->
+          <div class="flex items-center gap-3 text-xs text-gray-300">
+            <span id="videoCurrentTime">00:00</span>
+            <input type="range" id="videoSeeker" min="0" max="100" value="0" step="0.1" oninput="onSeekVideo(this.value)" class="flex-1 accent-secondary h-1.5 rounded-lg cursor-pointer">
+            <span id="videoTotalTime">09:56</span>
+          </div>
+
+          <!-- Bottom Control Buttons -->
+          <div class="flex items-center justify-between text-white text-sm">
+            <div class="flex items-center gap-4">
+              <button onclick="toggleVideoPlay()" class="hover:text-secondary flex items-center">
+                <span id="bottomPlayIcon" class="material-symbols-outlined text-[22px]">pause</span>
+              </button>
+              <div class="flex items-center gap-1.5">
+                <button onclick="toggleMute()" class="hover:text-secondary">
+                  <span id="volumeIcon" class="material-symbols-outlined text-[20px]">volume_up</span>
+                </button>
+                <input type="range" id="volumeSlider" min="0" max="1" step="0.05" value="1" oninput="setVolume(this.value)" class="w-16 accent-primary h-1">
+              </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+              <button onclick="changePlaybackSpeed()" id="speedBtn" class="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-xs font-bold">1.0x</button>
+              <button onclick="toggleFullscreen()" class="hover:text-secondary">
+                <span class="material-symbols-outlined text-[20px]">fullscreen</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: TRAKT AUTHENTICATION DIALOG (DEVICE CODE FLOW + 1-CLICK DEMO) -->
+  <!-- ========================================================================= -->
+  <div id="traktModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="glass-card bg-surface-card max-w-md w-full rounded-3xl p-6 border border-white/10 shadow-2xl relative">
+      <button onclick="closeTraktModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">
+        <span class="material-symbols-outlined text-[20px]">close</span>
+      </button>
+
+      <!-- Trakt Header -->
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-12 h-12 rounded-2xl bg-trakt flex items-center justify-center shadow-lg shadow-trakt/30">
+          <span class="material-symbols-outlined text-white text-[28px]">movie_filter</span>
+        </div>
+        <div>
+          <h3 class="text-lg font-bold text-white">Trakt Integration</h3>
+          <p class="text-xs text-gray-400">Track and scrobble what you watch</p>
+        </div>
+      </div>
+
+      <!-- State: Not Connected -->
+      <div id="traktDisconnectedView" class="space-y-4">
+        <p class="text-xs text-gray-300 leading-relaxed">
+          Connect your Trakt.tv account to automatically track playback progress, sync watchlists across all your devices, and rate titles with the community.
+        </p>
+
+        <!-- Feature List -->
+        <div class="space-y-2 py-2 text-xs text-gray-300">
+          <div class="flex items-center gap-2.5">
+            <span class="material-symbols-outlined text-trakt text-[18px]">history</span>
+            <span>Real-time watch history synchronization</span>
+          </div>
+          <div class="flex items-center gap-2.5">
+            <span class="material-symbols-outlined text-trakt text-[18px]">sync_alt</span>
+            <span>Automatic scrobbling at 80% completion</span>
+          </div>
+          <div class="flex items-center gap-2.5">
+            <span class="material-symbols-outlined text-trakt text-[18px]">star</span>
+            <span>Rate movies 1–10 stars and read reviews</span>
+          </div>
+        </div>
+
+        <!-- Device Code Box (simulated Trakt device auth) -->
+        <div id="traktCodeSection" class="hidden bg-surface-high p-4 rounded-xl text-center space-y-2 border border-primary/30">
+          <p class="text-[11px] text-gray-400">Visit <a href="https://trakt.tv/activate" target="_blank" class="text-primary-light underline font-bold">trakt.tv/activate</a> and enter code:</p>
+          <div class="text-2xl font-mono font-extrabold text-white tracking-widest bg-black/40 py-2 rounded-lg border border-white/10 select-all" id="deviceCodeDisplay">
+            CPHR-8492
+          </div>
+          <p class="text-[10px] text-gray-500 animate-pulse">Waiting for authorization...</p>
+        </div>
+
+        <!-- Buttons -->
+        <div class="space-y-2 pt-2">
+          <button onclick="startTraktDeviceFlow()" id="traktStartDeviceBtn" class="w-full py-3 rounded-full bg-trakt hover:opacity-95 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-trakt/20 transition-all">
+            <span class="material-symbols-outlined text-[16px]">devices</span>
+            <span>Connect with Device Code</span>
+          </button>
+          <button onclick="connectDemoTrakt()" class="w-full py-3 rounded-full bg-surface-high hover:bg-white/15 text-white font-semibold text-xs flex items-center justify-center gap-2 border border-white/10 transition-all">
+            <span class="material-symbols-outlined text-primary-light text-[16px]">auto_awesome</span>
+            <span>1-Click Demo Connect (Instant)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- State: Connected -->
+      <div id="traktConnectedView" class="hidden space-y-4">
+        <div class="bg-surface-high p-4 rounded-2xl border border-trakt/20 flex items-center gap-4">
+          <img id="traktProfileAvatar" src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&q=80" alt="Trakt Avatar" class="w-12 h-12 rounded-full object-cover border-2 border-trakt">
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-sm font-bold text-white" id="traktProfileUsername">Alex Morgan</span>
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            </div>
+            <p class="text-xs text-trakt font-semibold">Trakt VIP Sync Active</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 text-center text-xs">
+          <div class="bg-surface-high p-2.5 rounded-xl border border-white/5">
+            <div class="font-bold text-white text-base" id="traktMoviesCount">248</div>
+            <div class="text-[10px] text-gray-400">Movies Watched</div>
+          </div>
+          <div class="bg-surface-high p-2.5 rounded-xl border border-white/5">
+            <div class="font-bold text-white text-base" id="traktEpisodesCount">1,120</div>
+            <div class="text-[10px] text-gray-400">Episodes</div>
+          </div>
+          <div class="bg-surface-high p-2.5 rounded-xl border border-white/5">
+            <div class="font-bold text-white text-base" id="traktRatingsCount">89</div>
+            <div class="text-[10px] text-gray-400">Ratings</div>
+          </div>
+        </div>
+
+        <button onclick="disconnectTrakt()" class="w-full py-2.5 rounded-full border border-rose-500/40 text-rose-400 hover:bg-rose-500/10 text-xs font-semibold transition-all">
+          Disconnect Trakt Account
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: TRAKT RATING DIALOG (1 - 10 STARS) -->
+  <!-- ========================================================================= -->
+  <div id="traktRatingModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="glass-card bg-surface-card max-w-sm w-full rounded-3xl p-6 border border-white/10 text-center relative">
+      <button onclick="closeTraktRatingModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">
+        <span class="material-symbols-outlined text-[18px]">close</span>
+      </button>
+
+      <div class="w-12 h-12 rounded-full bg-amber-400/20 text-amber-400 mx-auto flex items-center justify-center mb-3">
+        <span class="material-symbols-outlined text-[28px]" style="font-variation-settings: 'FILL' 1;">star</span>
+      </div>
+
+      <h3 class="text-base font-bold text-white mb-1">Rate on Trakt</h3>
+      <p id="ratingModalMovieTitle" class="text-xs text-gray-400 mb-5">Chrono Mirage</p>
+
+      <!-- 10 Stars row -->
+      <div class="flex items-center justify-center gap-1.5 mb-4" id="ratingStarsContainer">
+        <!-- Injected via JS -->
+      </div>
+      <div class="text-xs font-semibold text-primary-light h-4 mb-4" id="ratingTextLabel">Tap a star to rate</div>
+
+      <button onclick="submitTraktRating()" class="w-full py-2.5 rounded-full bg-primary hover:bg-primary-light text-white text-xs font-bold transition-all">
+        Save Rating to Trakt
+      </button>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: MOVIE DETAIL SHEET -->
+  <!-- ========================================================================= -->
+  <div id="detailModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="glass-card bg-surface-card max-w-2xl w-full rounded-3xl overflow-hidden border border-white/10 shadow-2xl relative max-h-[90vh] flex flex-col">
+      <button onclick="closeDetailModal()" class="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/80 transition-all">
+        <span class="material-symbols-outlined text-[18px]">close</span>
+      </button>
+
+      <div class="relative h-60 w-full shrink-0">
+        <img id="detailBackdropImg" src="" alt="Backdrop" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-gradient-to-t from-surface-card via-surface-card/40 to-transparent"></div>
+        <button onclick="playCurrentDetailMovie()" class="absolute inset-0 flex items-center justify-center group">
+          <div class="w-14 h-14 rounded-full bg-secondary text-white flex items-center justify-center group-hover:scale-110 shadow-xl transition-all">
+            <span class="material-symbols-outlined text-[32px]" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+          </div>
+        </button>
+      </div>
+
+      <div class="p-6 overflow-y-auto space-y-4 flex-1">
+        <div class="flex items-center justify-between">
+          <h2 id="detailTitle" class="text-2xl font-extrabold text-white">Movie Title</h2>
+          <div class="flex items-center gap-1 text-amber-400 font-bold text-sm">
+            <span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+            <span id="detailRating">8.9</span>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2 text-xs text-gray-300">
+          <span id="detailYear">2024</span>
+          <span>•</span>
+          <span id="detailGenres">Sci-Fi • Thriller</span>
+          <span>•</span>
+          <span id="detailDuration">2h 24m</span>
+          <span class="ml-2 px-2 py-0.5 rounded bg-white/10 text-[10px] font-bold">4K HDR</span>
+          <span class="px-2 py-0.5 rounded bg-white/10 text-[10px] font-bold">IMAX</span>
+        </div>
+
+        <p id="detailDesc" class="text-xs sm:text-sm text-gray-300 leading-relaxed">
+          Full movie synopsis text...
+        </p>
+
+        <div class="flex items-center gap-3 pt-2">
+          <button onclick="playCurrentDetailMovie()" class="flex-1 py-3 rounded-full bg-secondary hover:bg-secondary-coral text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-secondary/20 transition-all">
+            <span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+            <span>Watch Now</span>
+          </button>
+          <button onclick="toggleDetailWatchlist()" id="detailWatchlistBtn" class="px-5 py-3 rounded-full bg-surface-high hover:bg-white/10 text-white font-semibold text-xs flex items-center gap-1.5 border border-white/10 transition-all">
+            <span class="material-symbols-outlined text-[16px]">bookmark_border</span>
+            <span>Watchlist</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+    <div class="bg-surface-card border border-primary/40 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-xs font-semibold">
+      <span id="toastIcon" class="material-symbols-outlined text-primary text-[20px]">check_circle</span>
+      <span id="toastMessage">Success</span>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- JAVASCRIPT: LOGIC, STATE MANAGEMENT, TRAKT SYNC & VIDEO PLAYER -->
+  <!-- ========================================================================= -->
+  <script>
+    // ── DATA CATALOG ──────────────────────────────────────────────────────────
+    const MOVIES = [
+      {
+        id: '1',
+        title: 'Chrono Mirage',
+        year: 2024,
+        rating: 8.9,
+        duration: '2h 24m',
+        genres: ['Sci-Fi', 'Thriller'],
+        imageUrl: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=500&q=80',
+        backdropUrl: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=1600&q=80',
+        description: 'When humanity\'s final observatory records reverse chronological echoes, a rogue astrophysicist races across parallel reality rifts to prevent universe-wide temporal collapse.'
+      },
+      {
+        id: '2',
+        title: 'Solaris Awakening',
+        year: 2024,
+        rating: 8.7,
+        duration: '2h 40m',
+        genres: ['Sci-Fi', 'Drama'],
+        imageUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=500&q=80',
+        backdropUrl: 'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=1600&q=80',
+        description: 'Deep below the sentient ocean planet Solaris, researchers begin to confront physical manifestations of their deeply buried grief.'
+      },
+      {
+        id: '3',
+        title: 'Velvet Mirage',
+        year: 2023,
+        rating: 8.9,
+        duration: '1h 52m',
+        genres: ['Thriller', 'Action'],
+        imageUrl: 'https://images.unsplash.com/photo-1485846234645-a62644f84728?w=500&q=80',
+        backdropUrl: 'https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?w=1600&q=80',
+        description: 'A neon-lit neo-noir detective mystery unfolding across 1950s Paris bathed in jazz and crimson reflections.'
+      },
+      {
+        id: '4',
+        title: 'Spirit Weaver',
+        year: 2024,
+        rating: 8.8,
+        duration: '1h 48m',
+        genres: ['Fantasy', 'Animation'],
+        imageUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=500&q=80',
+        backdropUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1600&q=80',
+        description: 'A young guardian discovers the power to weave celestial constellations into mythical spirit protectors.'
+      },
+      {
+        id: '5',
+        title: 'Neon Odyssey',
+        year: 2023,
+        rating: 8.6,
+        duration: '2h 10m',
+        genres: ['Action', 'Sci-Fi'],
+        imageUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=500&q=80',
+        backdropUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=1600&q=80',
+        description: 'A mercenary cyborg undertakes a covert mission to infiltrate an orbital megacity controlled by an autonomous intelligence.'
+      },
+      {
+        id: '6',
+        title: 'Echoes of Eternity',
+        year: 2024,
+        rating: 9.1,
+        duration: '2h 35m',
+        genres: ['Drama', 'Fantasy'],
+        imageUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=500&q=80',
+        backdropUrl: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=1600&q=80',
+        description: 'Two soulmates separated by centuries discover an ancient harmonic frequency that allows them to communicate across epochs.'
+      }
+    ];
+
+    // ── STATE ────────────────────────────────────────────────────────────────
+    let currentNav = 'home';
+    let currentLibTab = 'watchlist';
+    let isTraktConnected = false;
+    let traktUser = { username: 'Alex Morgan', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&q=80' };
+    let watchlist = ['Chrono Mirage', 'Solaris Awakening', 'Velvet Mirage'];
+    let favorites = ['Chrono Mirage', 'Spirit Weaver', 'Echoes of Eternity'];
+    let selectedRating = 0;
+    let activeDetailMovie = MOVIES[0];
+    let scrobbledThisSession = false;
+
+    // ── INITIALIZATION ───────────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', () => {
+      renderContinueWatching();
+      renderMovieRows();
+      renderExploreGrid(MOVIES);
+      renderDownloads();
+      renderLibraryGrid();
+      initRatingStars();
+    });
+
+    // ── VIEW ROUTING ─────────────────────────────────────────────────────────
+    function switchNav(navKey) {
+      currentNav = navKey;
+      document.querySelectorAll('.view-panel').forEach(p => p.classList.add('hidden'));
+      const activePanel = document.getElementById(`view-${navKey}`);
+      if (activePanel) activePanel.classList.remove('hidden');
+
+      // Update Desktop Nav styles
+      document.querySelectorAll('#desktopNav button').forEach(b => {
+        if (b.dataset.nav === navKey) {
+          b.className = 'nav-item px-3.5 py-1.5 rounded-full text-white bg-white/10 font-semibold transition-all';
+        } else {
+          b.className = 'nav-item px-3.5 py-1.5 rounded-full hover:text-white hover:bg-white/5 transition-all text-gray-400';
+        }
+      });
+
+      // Update Mobile Nav styles
+      document.querySelectorAll('#mobileNav button').forEach(b => {
+        if (b.dataset.mobNav === navKey) {
+          b.className = 'flex flex-col items-center gap-1 text-primary-light font-bold';
+        } else {
+          b.className = 'flex flex-col items-center gap-1 text-gray-400 hover:text-white';
+        }
+      });
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ── VIEWPORT MODE TOGGLE (PC vs Mobile) ───────────────────────────────────
+    function setViewMode(mode) {
+      const container = document.getElementById('appContainer');
+      const pcBtn = document.getElementById('viewPcBtn');
+      const mobileBtn = document.getElementById('viewMobileBtn');
+
+      if (mode === 'mobile') {
+        container.className = 'w-full flex-1 flex flex-col transition-all duration-300 mobile-frame my-4 bg-background';
+        mobileBtn.className = 'px-2.5 py-1 rounded-md text-xs font-semibold bg-primary text-white flex items-center gap-1 transition-all';
+        pcBtn.className = 'px-2.5 py-1 rounded-md text-xs font-semibold text-gray-400 hover:text-white flex items-center gap-1 transition-all';
+        showToast('Switched to Mobile View (440px)');
+      } else {
+        container.className = 'w-full flex-1 flex flex-col transition-all duration-300';
+        pcBtn.className = 'px-2.5 py-1 rounded-md text-xs font-semibold bg-primary text-white flex items-center gap-1 transition-all';
+        mobileBtn.className = 'px-2.5 py-1 rounded-md text-xs font-semibold text-gray-400 hover:text-white flex items-center gap-1 transition-all';
+        showToast('Switched to PC Desktop View');
+      }
+    }
+
+    // ── TRAKT AUTH FLOW ──────────────────────────────────────────────────────
+    function openTraktModal() {
+      document.getElementById('traktModal').classList.remove('hidden');
+      document.getElementById('traktModal').classList.add('flex');
+    }
+    function closeTraktModal() {
+      document.getElementById('traktModal').classList.add('hidden');
+      document.getElementById('traktModal').classList.remove('flex');
+    }
+
+    function startTraktDeviceFlow() {
+      const codeSec = document.getElementById('traktCodeSection');
+      const startBtn = document.getElementById('traktStartDeviceBtn');
+      codeSec.classList.remove('hidden');
+      startBtn.innerHTML = '<span class="material-symbols-outlined text-[16px] animate-spin">refresh</span><span>Polling Trakt...</span>';
+
+      // Simulate Trakt polling completion after 3 seconds
+      setTimeout(() => {
+        connectDemoTrakt();
+      }, 3500);
+    }
+
+    function connectDemoTrakt() {
+      isTraktConnected = true;
+      updateTraktUI();
+      closeTraktModal();
+      showToast('Trakt account connected successfully!');
+    }
+
+    function disconnectTrakt() {
+      isTraktConnected = false;
+      updateTraktUI();
+      closeTraktModal();
+      showToast('Disconnected Trakt account.');
+    }
+
+    function toggleDemoAuth() {
+      if (isTraktConnected) disconnectTrakt();
+      else connectDemoTrakt();
+    }
+
+    function updateTraktUI() {
+      const label = document.getElementById('headerTraktLabel');
+      const quickStatus = document.getElementById('quickAuthStatusText');
+      const quickBtn = document.getElementById('quickAuthStatusBtn');
+      const libBadge = document.getElementById('libTraktBadge');
+      const discView = document.getElementById('traktDisconnectedView');
+      const connView = document.getElementById('traktConnectedView');
+
+      if (isTraktConnected) {
+        label.innerText = 'Trakt Synced';
+        quickStatus.innerText = 'Trakt: Connected';
+        quickBtn.className = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition-all';
+        libBadge.classList.remove('hidden');
+        discView.classList.add('hidden');
+        connView.classList.remove('hidden');
+      } else {
+        label.innerText = 'Trakt';
+        quickStatus.innerText = 'Trakt: Disconnected';
+        quickBtn.className = 'bg-trakt/20 hover:bg-trakt/30 text-trakt border border-trakt/40 px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition-all';
+        libBadge.classList.add('hidden');
+        discView.classList.remove('hidden');
+        connView.classList.add('hidden');
+        document.getElementById('traktCodeSection').classList.add('hidden');
+        document.getElementById('traktStartDeviceBtn').innerHTML = '<span class="material-symbols-outlined text-[16px]">devices</span><span>Connect with Device Code</span>';
+      }
+    }
+
+    // ── VIDEO PLAYER & SCROBBLER ─────────────────────────────────────────────
+    const videoElem = document.getElementById('htmlVideo');
+    const videoModal = document.getElementById('videoModal');
+    const seeker = document.getElementById('videoSeeker');
+
+    function playMovie(title, url) {
+      document.getElementById('videoModalTitle').innerText = title;
+      scrobbledThisSession = false;
+      document.getElementById('scrobbleIndicatorBadge').classList.add('hidden');
+      videoModal.classList.remove('hidden');
+      videoModal.classList.add('flex');
+      videoElem.src = url || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+      videoElem.play();
+      updatePlayIcon(true);
+    }
+
+    function closeVideoPlayer() {
+      videoElem.pause();
+      videoModal.classList.add('hidden');
+      videoModal.classList.remove('flex');
+    }
+
+    function toggleVideoPlay() {
+      if (videoElem.paused) {
+        videoElem.play();
+        updatePlayIcon(true);
+      } else {
+        videoElem.pause();
+        updatePlayIcon(false);
+      }
+    }
+
+    function updatePlayIcon(isPlaying) {
+      const icon = isPlaying ? 'pause' : 'play_arrow';
+      document.getElementById('playPauseIcon').innerText = icon;
+      document.getElementById('bottomPlayIcon').innerText = icon;
+    }
+
+    function skipVideo(seconds) {
+      videoElem.currentTime = Math.max(0, Math.min(videoElem.duration, videoElem.currentTime + seconds));
+    }
+
+    function onSeekVideo(pct) {
+      videoElem.currentTime = (pct / 100) * videoElem.duration;
+    }
+
+    function setVolume(val) {
+      videoElem.volume = val;
+      const volIcon = document.getElementById('volumeIcon');
+      if (val == 0) volIcon.innerText = 'volume_off';
+      else if (val < 0.5) volIcon.innerText = 'volume_down';
+      else volIcon.innerText = 'volume_up';
+    }
+
+    function toggleMute() {
+      videoElem.muted = !videoElem.muted;
+      document.getElementById('volumeIcon').innerText = videoElem.muted ? 'volume_off' : 'volume_up';
+    }
+
+    function changePlaybackSpeed() {
+      const speeds = [1.0, 1.25, 1.5, 2.0];
+      const curIdx = speeds.indexOf(videoElem.playbackRate);
+      const nextSpeed = speeds[(curIdx + 1) % speeds.length];
+      videoElem.playbackRate = nextSpeed;
+      document.getElementById('speedBtn').innerText = nextSpeed + 'x';
+      showToast(`Speed set to ${nextSpeed}x`);
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        videoModal.requestFullscreen().catch(err => {});
+      } else {
+        document.exitFullscreen();
+      }
+    }
+
+    // Video Timeupdate listener: Seek bar update & Trakt 80% Auto-scrobble
+    videoElem.addEventListener('timeupdate', () => {
+      if (videoElem.duration) {
+        const cur = videoElem.currentTime;
+        const dur = videoElem.duration;
+        const pct = (cur / dur) * 100;
+        seeker.value = pct;
+        document.getElementById('videoCurrentTime').innerText = formatTime(cur);
+        document.getElementById('videoTotalTime').innerText = formatTime(dur);
+
+        // Auto-scrobble at 80% completion if Trakt is connected
+        if (pct >= 80 && !scrobbledThisSession) {
+          scrobbledThisSession = true;
+          document.getElementById('scrobbleIndicatorBadge').classList.remove('hidden');
+          showToast('🎬 Trakt Scrobble: Marked as watched!');
+        }
+      }
+    });
+
+    videoElem.addEventListener('ended', () => {
+      openTraktRatingModal();
+    });
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    // ── TRAKT RATING SYSTEM ──────────────────────────────────────────────────
+    function initRatingStars() {
+      const cont = document.getElementById('ratingStarsContainer');
+      cont.innerHTML = '';
+      for (let i = 1; i <= 10; i++) {
+        const star = document.createElement('button');
+        star.className = 'w-7 h-7 rounded-full bg-surface-high hover:bg-amber-400 hover:text-black text-gray-400 flex items-center justify-center text-xs font-bold transition-all';
+        star.innerText = i;
+        star.onclick = () => selectRating(i);
+        cont.appendChild(star);
+      }
+    }
+
+    function selectRating(r) {
+      selectedRating = r;
+      document.querySelectorAll('#ratingStarsContainer button').forEach((btn, idx) => {
+        if (idx + 1 <= r) {
+          btn.className = 'w-7 h-7 rounded-full bg-amber-400 text-black font-extrabold text-xs shadow-md shadow-amber-400/30';
+        } else {
+          btn.className = 'w-7 h-7 rounded-full bg-surface-high text-gray-400 text-xs';
+        }
+      });
+      document.getElementById('ratingTextLabel').innerText = `Rating: ${r}/10 Stars`;
+    }
+
+    function openTraktRatingModal() {
+      document.getElementById('ratingModalMovieTitle').innerText = document.getElementById('videoModalTitle').innerText;
+      document.getElementById('traktRatingModal').classList.remove('hidden');
+      document.getElementById('traktRatingModal').classList.add('flex');
+    }
+
+    function closeTraktRatingModal() {
+      document.getElementById('traktRatingModal').classList.add('hidden');
+      document.getElementById('traktRatingModal').classList.remove('flex');
+    }
+
+    function submitTraktRating() {
+      if (selectedRating > 0) {
+        showToast(`Rated ${selectedRating}/10 on Trakt!`);
+      }
+      closeTraktRatingModal();
+    }
+
+    // ── DETAIL MODAL ─────────────────────────────────────────────────────────
+    function openDetailModal(title) {
+      const m = MOVIES.find(x => x.title === title) || MOVIES[0];
+      activeDetailMovie = m;
+      document.getElementById('detailTitle').innerText = m.title;
+      document.getElementById('detailRating').innerText = m.rating;
+      document.getElementById('detailYear').innerText = m.year;
+      document.getElementById('detailDuration').innerText = m.duration;
+      document.getElementById('detailGenres').innerText = m.genres.join(' • ');
+      document.getElementById('detailDesc').innerText = m.description;
+      document.getElementById('detailBackdropImg').src = m.backdropUrl;
+      document.getElementById('detailModal').classList.remove('hidden');
+      document.getElementById('detailModal').classList.add('flex');
+    }
+
+    function closeDetailModal() {
+      document.getElementById('detailModal').classList.add('hidden');
+      document.getElementById('detailModal').classList.remove('flex');
+    }
+
+    function playCurrentDetailMovie() {
+      closeDetailModal();
+      playMovie(activeDetailMovie.title);
+    }
+
+    function toggleDetailWatchlist() {
+      toggleWatchlist(activeDetailMovie.title);
+    }
+
+    function toggleWatchlist(title) {
+      const idx = watchlist.indexOf(title);
+      if (idx > -1) {
+        watchlist.splice(idx, 1);
+        showToast(`Removed "${title}" from Watchlist`);
+      } else {
+        watchlist.push(title);
+        showToast(`Added "${title}" to Watchlist`);
+      }
+      renderLibraryGrid();
+    }
+
+    // ── RENDERERS ────────────────────────────────────────────────────────────
+    let traktContinueWatching = []; // Empty by default until synced with Trakt
+
+    function renderContinueWatching() {
+      const section = document.getElementById('continueWatchingSection');
+      const row = document.getElementById('continueWatchingRow');
+      if (!traktContinueWatching || traktContinueWatching.length === 0) {
+        if (section) section.style.display = 'none';
+        return;
+      }
+      if (section) section.style.display = 'block';
+      row.innerHTML = traktContinueWatching.map(m => `
+        <div class="glass-card rounded-2xl overflow-hidden group hover:border-primary/50 transition-all cursor-pointer" onclick="playMovie('${m.title}')">
+          <div class="relative h-36 bg-surface overflow-hidden">
+            <img src="${m.backdropUrl}" alt="${m.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <div class="w-10 h-10 rounded-full bg-secondary text-white flex items-center justify-center shadow-lg">
+                <span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+              </div>
+            </div>
+            <div class="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/70 text-[10px] font-bold text-gray-200">${m.duration}</div>
+          </div>
+          <div class="p-3">
+            <div class="w-full h-1 bg-surface-high rounded-full overflow-hidden mb-2">
+              <div class="h-full bg-primary rounded-full" style="width: ${Math.round((m.progress || 0.5) * 100)}%;"></div>
+            </div>
+            <h4 class="text-xs font-bold text-white truncate">${m.title}</h4>
+            <p class="text-[11px] text-gray-400 truncate">${(m.genres || []).join(' • ')}</p>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderMovieRows() {
+      const createPosterCard = (m) => `
+        <div class="poster-hover group cursor-pointer flex flex-col space-y-1.5" onclick="openDetailModal('${m.title}')">
+          <div class="relative aspect-[2/3] rounded-xl overflow-hidden bg-surface-card border border-white/5">
+            <img src="${m.imageUrl}" alt="${m.title}" class="w-full h-full object-cover transition-transform duration-300">
+            <div class="poster-overlay absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 transition-opacity flex flex-col justify-between p-2.5">
+              <span class="self-start px-1.5 py-0.5 rounded bg-black/70 text-[10px] font-bold text-amber-400 flex items-center gap-0.5">
+                <span class="material-symbols-outlined text-[12px]" style="font-variation-settings: 'FILL' 1;">star</span>
+                ${m.rating}
+              </span>
+              <button onclick="event.stopPropagation(); playMovie('${m.title}')" class="w-10 h-10 rounded-full bg-secondary text-white mx-auto flex items-center justify-center shadow-xl">
+                <span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+              </button>
+              <div class="text-[10px] text-gray-300 text-center">${m.duration}</div>
+            </div>
+          </div>
+          <div class="truncate text-xs font-bold text-gray-100 group-hover:text-primary-light transition-colors">${m.title}</div>
+          <div class="text-[11px] text-gray-400 truncate">${m.genres[0]} • ${m.year}</div>
+        </div>
+      `;
+
+      document.getElementById('topRatedRow').innerHTML = MOVIES.map(createPosterCard).join('');
+      document.getElementById('trendingRow').innerHTML = [...MOVIES].reverse().map(createPosterCard).join('');
+    }
+
+    function renderExploreGrid(list) {
+      document.getElementById('exploreGrid').innerHTML = list.map(m => `
+        <div class="poster-hover group cursor-pointer flex flex-col space-y-1.5" onclick="openDetailModal('${m.title}')">
+          <div class="relative aspect-[2/3] rounded-xl overflow-hidden bg-surface-card border border-white/5">
+            <img src="${m.imageUrl}" alt="${m.title}" class="w-full h-full object-cover transition-transform duration-300">
+            <div class="poster-overlay absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 transition-opacity flex flex-col justify-between p-2.5">
+              <span class="self-start px-1.5 py-0.5 rounded bg-black/70 text-[10px] font-bold text-amber-400 flex items-center gap-0.5">
+                <span class="material-symbols-outlined text-[12px]" style="font-variation-settings: 'FILL' 1;">star</span>
+                ${m.rating}
+              </span>
+              <button onclick="event.stopPropagation(); playMovie('${m.title}')" class="w-10 h-10 rounded-full bg-secondary text-white mx-auto flex items-center justify-center shadow-xl">
+                <span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+              </button>
+              <div class="text-[10px] text-gray-300 text-center">${m.duration}</div>
+            </div>
+          </div>
+          <div class="truncate text-xs font-bold text-gray-100 group-hover:text-primary-light transition-colors">${m.title}</div>
+          <div class="text-[11px] text-gray-400 truncate">${m.genres.join(' • ')}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderDownloads() {
+      const items = [
+        { title: 'Chrono Mirage', size: '1.2 GB', qual: '1080p Full HD', img: MOVIES[0].imageUrl },
+        { title: 'Solaris Awakening', size: '980 MB', qual: '720p HD', img: MOVIES[1].imageUrl },
+        { title: 'Spirit Weaver', size: '750 MB', qual: '720p HD', img: MOVIES[3].imageUrl }
+      ];
+
+      document.getElementById('downloadsList').innerHTML = items.map(d => `
+        <div class="glass-card rounded-2xl p-3 flex items-center justify-between hover:border-white/20 transition-all">
+          <div class="flex items-center gap-3">
+            <img src="${d.img}" alt="${d.title}" class="w-12 h-16 rounded-lg object-cover">
+            <div>
+              <h4 class="text-xs font-bold text-white">${d.title}</h4>
+              <p class="text-[11px] text-gray-400">${d.size} &bull; ${d.qual}</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="playMovie('${d.title}')" class="w-9 h-9 rounded-full bg-primary/20 hover:bg-primary text-primary-light hover:text-white flex items-center justify-center transition-all" title="Play">
+              <span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+            </button>
+            <button onclick="deleteDownload('${d.title}')" class="w-9 h-9 rounded-full hover:bg-rose-500/20 text-gray-400 hover:text-rose-400 flex items-center justify-center transition-all" title="Delete">
+              <span class="material-symbols-outlined text-[18px]">delete</span>
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function deleteDownload(title) {
+      showToast(`Removed download "${title}"`);
+    }
+
+    function renderLibraryGrid() {
+      let list = [];
+      if (currentLibTab === 'watchlist') {
+        list = MOVIES.filter(m => watchlist.includes(m.title));
+      } else if (currentLibTab === 'favorites') {
+        list = MOVIES.filter(m => favorites.includes(m.title));
+      } else {
+        list = MOVIES;
+      }
+      document.getElementById('libraryGrid').innerHTML = list.map(m => `
+        <div class="poster-hover group cursor-pointer flex flex-col space-y-1.5" onclick="openDetailModal('${m.title}')">
+          <div class="relative aspect-[2/3] rounded-xl overflow-hidden bg-surface-card border border-white/5">
+            <img src="${m.imageUrl}" alt="${m.title}" class="w-full h-full object-cover transition-transform duration-300">
+            <div class="poster-overlay absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 transition-opacity flex flex-col justify-between p-2.5">
+              <span class="self-start px-1.5 py-0.5 rounded bg-black/70 text-[10px] font-bold text-amber-400 flex items-center gap-0.5">
+                <span class="material-symbols-outlined text-[12px]" style="font-variation-settings: 'FILL' 1;">star</span>
+                ${m.rating}
+              </span>
+              <button onclick="event.stopPropagation(); playMovie('${m.title}')" class="w-10 h-10 rounded-full bg-secondary text-white mx-auto flex items-center justify-center shadow-xl">
+                <span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+              </button>
+            </div>
+          </div>
+          <div class="truncate text-xs font-bold text-gray-100 group-hover:text-primary-light transition-colors">${m.title}</div>
+          <div class="text-[11px] text-gray-400 truncate">${m.genres[0]} • ${m.year}</div>
+        </div>
+      `).join('');
+    }
+
+    function switchLibTab(tab) {
+      currentLibTab = tab;
+      ['watchlist', 'favorites', 'history'].forEach(t => {
+        const btn = document.getElementById(`libTab${t.charAt(0).toUpperCase() + t.slice(1)}`);
+        if (t === tab) {
+          btn.className = 'pb-3 text-primary-light border-b-2 border-primary';
+        } else {
+          btn.className = 'pb-3 hover:text-white text-gray-400';
+        }
+      });
+      renderLibraryGrid();
+    }
+
+    // ── SEARCH & FILTER ──────────────────────────────────────────────────────
+    function handleSearch(q) {
+      const clearBtn = document.getElementById('searchClearBtn');
+      if (q.trim()) clearBtn.classList.remove('hidden');
+      else clearBtn.classList.add('hidden');
+
+      const filtered = MOVIES.filter(m =>
+        m.title.toLowerCase().includes(q.toLowerCase()) ||
+        m.genres.some(g => g.toLowerCase().includes(q.toLowerCase())) ||
+        m.description.toLowerCase().includes(q.toLowerCase())
+      );
+      renderExploreGrid(filtered);
+    }
+
+    function clearSearch() {
+      const input = document.getElementById('searchInput');
+      input.value = '';
+      document.getElementById('searchClearBtn').classList.add('hidden');
+      renderExploreGrid(MOVIES);
+    }
+
+    function filterGenre(genre) {
+      document.querySelectorAll('.genre-pill').forEach(p => {
+        if (p.innerText.includes(genre) || (genre === 'All' && p.innerText.includes('All'))) {
+          p.className = 'genre-pill px-4 py-1.5 rounded-full text-xs font-semibold bg-primary text-white shrink-0 transition-all';
+        } else {
+          p.className = 'genre-pill px-4 py-1.5 rounded-full text-xs font-semibold bg-surface-card text-gray-300 hover:text-white shrink-0 transition-all';
+        }
+      });
+      if (genre === 'All') renderExploreGrid(MOVIES);
+      else renderExploreGrid(MOVIES.filter(m => m.genres.includes(genre)));
+    }
+
+    // ── THEME & TOAST ────────────────────────────────────────────────────────
+    function toggleOled(isOled) {
+      if (isOled) {
+        document.body.classList.add('bg-black');
+        showToast('OLED Pure Black theme active');
+      } else {
+        document.body.classList.remove('bg-black');
+        showToast('Standard CineSphere theme active');
+      }
+    }
+
+    function resetSettings() {
+      showToast('Settings reset to default values');
+    }
+
+    let toastTimer;
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      document.getElementById('toastMessage').innerText = msg;
+      t.classList.remove('translate-y-20', 'opacity-0');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        t.classList.add('translate-y-20', 'opacity-0');
+      }, 3000);
+    }
+
+    // ── HERO AUTOSCROLL ──────────────────────────────────────────────────────
+    let heroCurrentIndex = 0;
+    function updateHeroSlide(idx) {
+      const m = MOVIES[idx];
+      if (!m) return;
+      heroCurrentIndex = idx;
+      const backdrop = document.getElementById('heroBackdrop');
+      const title = document.getElementById('heroTitle');
+      const desc = document.getElementById('heroDesc');
+      if (backdrop) backdrop.src = m.backdropUrl;
+      if (title) title.innerText = m.title;
+      if (desc) desc.innerText = m.description;
+    }
+
+    setInterval(() => {
+      heroCurrentIndex = (heroCurrentIndex + 1) % MOVIES.length;
+      updateHeroSlide(heroCurrentIndex);
+    }, 5000);
+  </script>
+</body>
+</html>
