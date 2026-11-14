@@ -966,16 +966,16 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               semanticLabel: 'Watch now',
               child: FilledButton.icon(
                 onPressed: watchNow,
-                icon: const Icon(Icons.play_arrow_rounded, size: 22),
+                icon: const Icon(Icons.play_arrow_rounded, size: 18),
                 label: Text(movie.isTV && _episodes.isNotEmpty
                     ? 'Watch S$_selectedSeasonNumber E${_episodes.first.episodeNumber}'
                     : 'Watch Now'),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.secondary,
-                  foregroundColor: AppColors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  foregroundColor: AppColors.onSecondary,
+                  padding: const EdgeInsets.symmetric(vertical: 11),
                   textStyle: AppTheme.badge
-                      .copyWith(fontSize: 16, color: AppColors.white),
+                      .copyWith(fontSize: 14, color: AppColors.onSecondary),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(999),
                   ),

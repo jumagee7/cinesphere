@@ -30,8 +30,8 @@ class ScreenMetrics {
       width: size.width,
       height: size.height,
       couch: context.select((SettingsService s) => s.useTvLayout),
-      mobile:
-          context.select((SettingsService s) => s.forcedLayout == DeviceForm.phone),
+      mobile: context
+          .select((SettingsService s) => s.forcedLayout == DeviceForm.phone),
     );
   }
 
@@ -49,27 +49,27 @@ class ScreenMetrics {
   /// baseline when the mobile layout was chosen on purpose.
   double get _artWidth => mobile ? width.clamp(0.0, 420.0) : width;
 
-  /// Poster art in a horizontal row. 360 / 2.4 = the 150px phone baseline.
-  double get posterWidth => couch ? 210 : (_artWidth / 2.4).clamp(150.0, 200.0);
+  /// Poster art in a horizontal row. 360 / 2.6 ≈ the 138px phone baseline.
+  double get posterWidth => couch ? 178 : (_artWidth / 2.6).clamp(132.0, 185.0);
 
   /// Continue-watching cards: 16:9 art plus two text lines.
   double get landscapeWidth =>
-      couch ? 320 : (_artWidth / 1.64).clamp(220.0, 300.0);
+      couch ? 272 : (_artWidth / 1.8).clamp(196.0, 268.0);
 
-  double get rowGap => couch ? 18 : 12;
+  double get rowGap => couch ? 16 : 12;
 
   /// ~60% of the viewport height — the 480px banner on a phone — clamped so it
   /// stays a banner rather than becoming a wall.
   double get heroHeight => (height * 0.6).clamp(420.0, 560.0);
 
-  /// Search / browse posters, ~180px per tile.
-  int get posterColumns => couch ? 2 : _columns(180, 2, 6);
+  /// Search / browse posters, ~150px per tile.
+  int get posterColumns => couch ? 3 : _columns(150, 2, 8);
 
-  /// The tighter library grid, ~118px per tile.
-  int get tileColumns => couch ? 3 : _columns(118, 3, 6);
+  /// The tighter library grid, ~110px per tile.
+  int get tileColumns => couch ? 4 : _columns(110, 3, 7);
 
-  /// Wide genre tiles, ~170px per tile.
-  int get genreColumns => couch ? 2 : _columns(170, 2, 4);
+  /// Wide genre tiles, ~150px per tile.
+  int get genreColumns => couch ? 3 : _columns(150, 2, 5);
 
   int _columns(double target, int min, int max) =>
       (_artWidth / target).floor().clamp(min, max);

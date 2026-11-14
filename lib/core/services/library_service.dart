@@ -390,11 +390,114 @@ class LibraryService extends ChangeNotifier {
             m.badges.contains('Trakt') && !traktActiveIds.contains(m.id));
         await _saveContinueWatching();
         notifyListeners();
+
+        // Continue-watching only covers paused items, so a phone watch that
+        // ran to the end exists only in Trakt's history. Pull that too, or the
+        // History tab on a second device never sees it.
+        await _pullTraktHistory(token);
       }
       if (watchlist) await _pullTraktWatchlist(token);
     } catch (e) {
       debugPrint('Error syncing Trakt playback: $e');
     }
+  }
+
+  /// Imports Trakt's watched history into the local History tab. Entries
+  /// already on this device keep their place and their artwork; only new ones
+  /// are enriched through TMDB, so repeat syncs cost nothing.
+  Future<void> _pullTraktHistory(String token) async {
+    final remote = <Movie>[];
+    var enrichBudget = 20;
+
+    Future<void> collect(Map<String, dynamic> item, bool isShow) async {
+      final data =
+          (isShow ? item['show'] : item['movie']) as Map<String, dynamic>?;
+      if (data == null) return;
+      final ids = (data['ids'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final tmdbId = (ids['tmdb'] as num?)?.toInt() ?? 0;
+      final imdbId = ids['imdb'] as String?;
+      final title = data['title'] as String? ?? 'Untitled';
+      final id = tmdbId > 0 ? '$tmdbId' : title;
+      if (remote.any((m) => m.id == id)) return;
+
+      final local = _history.where((m) => m.id == id).firstOrNull;
+      var posterUrl = local?.imageUrl ?? '';
+      var backdropUrl = local?.backdropUrl ?? '';
+      if (local == null && tmdbId > 0 && enrichBudget > 0) {
+        enrichBudget--;
+        try {
+          final details = isShow
+              ? await TmdbService.getTVDetails(tmdbId)
+              : await TmdbService.getMovieDetails(tmdbId);
+          if (details != null) {
+            posterUrl = TmdbService.poster(details['poster_path'] as String?);
+            backdropUrl =
+                TmdbService.backdrop(details['backdrop_path'] as String?);
+          }
+        } catch (_) {}
+      }
+
+      final episode = (item['episode'] as Map<String, dynamic>?);
+      final genres =
+          (data['genres'] as List?)?.map((e) => e.toString()).toList() ??
+              const <String>[];
+      final year = (data['year'] as num?)?.toInt() ?? 0;
+      final rating = (data['rating'] as num?)?.toDouble() ?? 0.0;
+      if (isShow) {
+        final seasonNum = (episode?['season'] as num?)?.toInt() ?? 1;
+        final epNum = (episode?['number'] as num?)?.toInt() ?? 1;
+        remote.add(TVShow(
+          id: id,
+          tmdbId: tmdbId,
+          imdbId: imdbId,
+          title: title,
+          description: data['overview'] as String? ?? '',
+          imageUrl: posterUrl,
+          backdropUrl: backdropUrl,
+          rating: rating,
+          duration: '',
+          genres: genres,
+          badges: const ['Trakt'],
+          year: year,
+          ageRating: '',
+          season: seasonNum,
+          episode: epNum,
+          episodeTitle: episode?['title'] as String? ?? '',
+        ));
+      } else {
+        remote.add(Movie(
+          id: id,
+          tmdbId: tmdbId,
+          imdbId: imdbId,
+          title: title,
+          description: data['overview'] as String? ?? '',
+          imageUrl: posterUrl,
+          backdropUrl: backdropUrl,
+          rating: rating,
+          duration: '',
+          genres: genres,
+          badges: const ['Trakt'],
+          year: year,
+          ageRating: '',
+        ));
+      }
+    }
+
+    for (final raw in await TraktService.getWatchHistory(token, limit: 20)) {
+      if (raw is Map) await collect(raw.cast<String, dynamic>(), false);
+    }
+    for (final raw
+        in await TraktService.getWatchHistoryShows(token, limit: 20)) {
+      if (raw is Map) await collect(raw.cast<String, dynamic>(), true);
+    }
+
+    final known = _history.map((m) => m.id).toSet();
+    final incoming = remote.where((m) => !known.contains(m.id)).toList();
+    if (incoming.isEmpty) return;
+    _history = [..._history, ...incoming];
+    if (_history.length > 50) _history = _history.sublist(0, 50);
+    await _saveHistory();
+    notifyListeners();
   }
 
   /// Imports the user's Trakt watchlist, skipping anything already saved.

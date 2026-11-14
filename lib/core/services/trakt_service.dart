@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 /// Vyro's Trakt API integration — PKCE-first.
@@ -270,47 +271,86 @@ class TraktService {
     return [];
   }
 
-  /// Update playback progress on Trakt (scrobble pause / checkpoint).
-  static Future<bool> pausePlayback(String token,
-      {required String title,
-      String? imdbId,
-      int? tmdbId,
-      required double progress}) async {
-    final body = {
-      'movie': {
-        'title': title,
-        'ids': {
-          if (imdbId != null) 'imdb': imdbId,
-          if (tmdbId != null && tmdbId > 0) 'tmdb': tmdbId,
-        },
-      },
+  /// The Trakt scrobble payload. Episodes must be sent as `show` + `episode`;
+  /// posting a show as `movie` silently records nothing, which is why series
+  /// progress never reached other devices.
+  @visibleForTesting
+  static Map<String, dynamic> scrobbleBody({
+    required String title,
+    String? imdbId,
+    int? tmdbId,
+    int? season,
+    int? episode,
+    required double progress,
+  }) {
+    final ids = <String, dynamic>{
+      if (imdbId != null && imdbId.isNotEmpty) 'imdb': imdbId,
+      if (tmdbId != null && tmdbId > 0) 'tmdb': tmdbId,
+    };
+    if (season != null && episode != null) {
+      return {
+        'show': {'title': title, 'ids': ids},
+        'episode': {'season': season, 'number': episode},
+        'progress': progress,
+        'app_version': '1.0',
+      };
+    }
+    return {
+      'movie': {'title': title, 'ids': ids},
       'progress': progress,
       'app_version': '1.0',
     };
+  }
+
+  /// Update playback progress on Trakt (scrobble pause / checkpoint).
+  static Future<bool> pausePlayback(
+    String token, {
+    required String title,
+    String? imdbId,
+    int? tmdbId,
+    int? season,
+    int? episode,
+    required double progress,
+  }) async {
     final res = await http.post(
       Uri.parse('$_baseUrl/scrobble/pause'),
       headers: _authHeaders(token),
-      body: jsonEncode(body),
+      body: jsonEncode(scrobbleBody(
+        title: title,
+        imdbId: imdbId,
+        tmdbId: tmdbId,
+        season: season,
+        episode: episode,
+        progress: progress,
+      )),
     );
     return res.statusCode == 201 || res.statusCode == 200;
   }
 
   // ─── Scrobble / Check-in ─────────────────────────────────────────────────
 
-  /// Scrobble a movie watch (call at end of video).
-  static Future<bool> scrobbleMovie(String token,
-      {required String title, String? imdbId, double progress = 100.0}) async {
+  /// Finish a watch: Trakt marks it watched once progress passes 80%, which is
+  /// what puts it into the account's history for other devices to pull.
+  static Future<bool> scrobbleStop(
+    String token, {
+    required String title,
+    String? imdbId,
+    int? tmdbId,
+    int? season,
+    int? episode,
+    double progress = 100.0,
+  }) async {
     final res = await http.post(
       Uri.parse('$_baseUrl/scrobble/stop'),
       headers: _authHeaders(token),
-      body: jsonEncode({
-        'movie': {
-          'title': title,
-          'ids': {'imdb': imdbId}
-        },
-        'progress': progress,
-        'app_version': '1.0',
-      }),
+      body: jsonEncode(scrobbleBody(
+        title: title,
+        imdbId: imdbId,
+        tmdbId: tmdbId,
+        season: season,
+        episode: episode,
+        progress: progress,
+      )),
     );
     return res.statusCode == 201 || res.statusCode == 200;
   }

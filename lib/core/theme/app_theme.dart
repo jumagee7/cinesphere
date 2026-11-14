@@ -9,16 +9,16 @@ class AppTheme {
     final background =
         useOledBlack ? const Color(0xFF000000) : AppColors.background;
     final surfaceContainer =
-        useOledBlack ? const Color(0xFF040A07) : AppColors.surfaceContainer;
+        useOledBlack ? const Color(0xFF121212) : AppColors.surfaceContainer;
     final surfaceContainerLow =
-        useOledBlack ? const Color(0xFF061009) : AppColors.surfaceContainerLow;
+        useOledBlack ? const Color(0xFF0D0D0D) : AppColors.surfaceContainerLow;
     final surfaceContainerHigh =
-        useOledBlack ? const Color(0xFF0B1711) : AppColors.surfaceContainerHigh;
+        useOledBlack ? const Color(0xFF191919) : AppColors.surfaceContainerHigh;
     final surfaceContainerHighest = useOledBlack
-        ? const Color(0xFF102019)
+        ? const Color(0xFF202020)
         : AppColors.surfaceContainerHighest;
     final bottomNavBg =
-        useOledBlack ? const Color(0xFF020705) : AppColors.surfaceContainerHigh;
+        useOledBlack ? const Color(0xFF000000) : AppColors.surfaceContainerHigh;
 
     return ThemeData(
       useMaterial3: true,

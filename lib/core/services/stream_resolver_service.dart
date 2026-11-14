@@ -689,7 +689,16 @@ class _HiddenWebViewHostState extends State<_HiddenWebViewHost> {
           },
           onConsoleMessage: (ctrl, msg) {
             final text = msg.message;
-            if (text.toLowerCase().contains('error') || text.toLowerCase().contains('fail') || text.toLowerCase().contains('blocked')) {
+            final lower = text.toLowerCase();
+            // Chromium permissions-policy warnings ('hid', 'serial', 'usb'…)
+            // are page noise and can never affect stream extraction.
+            if (lower.contains('unrecognized feature') ||
+                lower.contains('permissions policy violation')) {
+              return;
+            }
+            if (lower.contains('error') ||
+                lower.contains('fail') ||
+                lower.contains('blocked')) {
               _log('Console: $text', level: LogLevel.warning);
             }
           },

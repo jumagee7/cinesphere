@@ -8,6 +8,8 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/device_form.dart';
+import '../../core/services/library_service.dart';
+import '../../core/services/settings_service.dart';
 import '../../shared/widgets/tv_focus.dart';
 import '../../core/utils/clipboard_stub.dart'
     if (dart.library.js_interop) '../../core/utils/clipboard_web.dart';
@@ -33,6 +35,7 @@ class _TraktAuthScreenState extends State<TraktAuthScreen> {
     // new Trakt state without the user having to tap Back.
     if (auth.isLoggedIn && !_autoPopScheduled) {
       _autoPopScheduled = true;
+      _pullLibrary();
       final nav = Navigator.of(context);
       Future.delayed(const Duration(milliseconds: 1400), () {
         if (!mounted) return;
@@ -65,6 +68,20 @@ class _TraktAuthScreenState extends State<TraktAuthScreen> {
   }
 
   // ── Already connected ────────────────────────────────────────────────────
+
+  /// Pairing only hands the device a token; without this the History tab stays
+  /// as empty as it was before the account was connected.
+  Future<void> _pullLibrary() async {
+    final auth = context.read<AuthService>();
+    final settings = context.read<SettingsService>();
+    final token = auth.accessToken;
+    if (token == null) return;
+    await context.read<LibraryService>().syncFromTrakt(
+          token,
+          history: settings.syncWatchHistory,
+          watchlist: settings.syncWatchlist,
+        );
+  }
 
   Widget _buildConnectedView(AuthService auth) {
     // A distinct key per phase: the three views are the same widget at the same

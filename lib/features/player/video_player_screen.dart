@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -272,6 +273,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   _RippleSide? _rippleSide;
 
   Timer? _scrobbleTimer;
+  bool _traktStopSent = false;
   Timer? _tapDebounceTimer;
   static const int _kDebounceMs = 220;
 
@@ -1637,14 +1639,33 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     if (!settings.scrobbleAutomatically) return;
     final auth = context.read<AuthService>();
     if (!auth.isLoggedIn || auth.accessToken == null) return;
+    final season = targetMovie is TVShow ? targetMovie.season : null;
+    final episode = targetMovie is TVShow ? targetMovie.episode : null;
     try {
-      await TraktService.pausePlayback(
-        auth.accessToken!,
-        title: widget.movie.title,
-        imdbId: widget.movie.imdbId,
-        tmdbId: widget.movie.tmdbId,
-        progress: progress * 100,
-      );
+      if (progress >= 0.95) {
+        // One stop per title: the 30s tick keeps firing past the 95% mark,
+        // and Trakt would record a new play for every call.
+        if (_traktStopSent) return;
+        _traktStopSent = true;
+        await TraktService.scrobbleStop(
+          auth.accessToken!,
+          title: widget.movie.title,
+          imdbId: widget.movie.imdbId,
+          tmdbId: widget.movie.tmdbId,
+          season: season,
+          episode: episode,
+        );
+      } else {
+        await TraktService.pausePlayback(
+          auth.accessToken!,
+          title: widget.movie.title,
+          imdbId: widget.movie.imdbId,
+          tmdbId: widget.movie.tmdbId,
+          season: season,
+          episode: episode,
+          progress: progress * 100,
+        );
+      }
     } catch (_) {
       // Scrobbling is best-effort.
     }
@@ -2721,6 +2742,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _nextEpisodeTimer?.cancel();
     _preloadedNextEpisode = false;
     _preloadedNextSource = null;
+    _traktStopSent = false;
     _stallNudges = 0;
     _lastStallPosition = Duration.zero;
     _lastStallProgressAt = DateTime.now();
@@ -3068,12 +3090,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           if (widget.movie.backdropUrl.isNotEmpty ||
               widget.movie.imageUrl.isNotEmpty)
             Positioned.fill(
-              child: Image.network(
-                widget.movie.backdropUrl.isNotEmpty
+              // Reuse the loading screen's image cache entry so the hand-off
+              // doesn't trigger a second full-size download + decode.
+              child: CachedNetworkImage(
+                imageUrl: widget.movie.backdropUrl.isNotEmpty
                     ? widget.movie.backdropUrl
                     : widget.movie.imageUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(color: Colors.black),
+                errorWidget: (_, __, ___) => Container(color: Colors.black),
               ),
             ),
           Positioned.fill(

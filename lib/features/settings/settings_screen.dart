@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -8,6 +9,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/settings_service.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/library_service.dart';
 import '../../core/services/device_form.dart';
 import '../../shared/widgets/tv_focus.dart';
 import '../auth/trakt_auth_screen.dart';
@@ -501,6 +503,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // ─── Trakt ────────────────────────────────────────────────────────────────
 
+  Future<void> _syncTraktNow(BuildContext context) async {
+    final token = context.read<AuthService>().accessToken;
+    final settings = context.read<SettingsService>();
+    final library = context.read<LibraryService>();
+    final messenger = ScaffoldMessenger.of(context);
+    if (token == null) return;
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Syncing with Trakt…')),
+    );
+    await library.syncFromTrakt(
+      token,
+      history: settings.syncWatchHistory,
+      watchlist: settings.syncWatchlist,
+    );
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('Synced — ${library.history.length} in history, '
+            '${library.continueWatching.length} in progress'),
+      ),
+    );
+  }
+
   Widget _buildTraktSection(BuildContext context) {
     final s = context.watch<SettingsService>();
     final auth = context.watch<AuthService>();
@@ -546,10 +571,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         const Divider(height: 1, color: AppColors.outlineVariant),
         if (auth.isLoggedIn) ...[
+          _SettingsTile(
+            icon: Icons.sync_rounded,
+            title: 'Sync Now',
+            subtitle: 'Pull history, continue watching & watchlist from Trakt',
+            trailing: const Icon(Icons.refresh_rounded,
+                color: AppColors.onSurfaceVariant),
+            onTap: () => _syncTraktNow(context),
+          ),
+          const Divider(height: 1, color: AppColors.outlineVariant),
           _SwitchTile(
             icon: Icons.history_rounded,
             title: 'Sync Watch History',
-            subtitle: 'Pull continue-watching progress from Trakt',
+            subtitle: 'Pull watch history and continue-watching from Trakt',
             value: s.syncWatchHistory,
             onChanged: s.setSyncWatchHistory,
           ),
@@ -906,25 +940,30 @@ class _SwitchTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SwitchListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-      secondary: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: AppColors.primaryLight.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(10),
+    return TvButton(
+      onSelect: () => onChanged(!value),
+      semanticLabel: '$title, ${value ? 'on' : 'off'}',
+      borderRadius: 14,
+      child: SwitchListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        secondary: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: AppColors.primaryLight.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: AppColors.primaryLight, size: 18),
         ),
-        child: Icon(icon, color: AppColors.primaryLight, size: 18),
+        title: Text(title, style: AppTheme.cardTitle.copyWith(fontSize: 14)),
+        subtitle: subtitle != null
+            ? Text(subtitle!, style: AppTheme.metadata.copyWith(fontSize: 12))
+            : null,
+        value: value,
+        onChanged: onChanged,
+        activeThumbColor: AppColors.primary,
+        activeTrackColor: AppColors.primary.withValues(alpha: 0.3),
       ),
-      title: Text(title, style: AppTheme.cardTitle.copyWith(fontSize: 14)),
-      subtitle: subtitle != null
-          ? Text(subtitle!, style: AppTheme.metadata.copyWith(fontSize: 12))
-          : null,
-      value: value,
-      onChanged: onChanged,
-      activeThumbColor: AppColors.primary,
-      activeTrackColor: AppColors.primary.withValues(alpha: 0.3),
     );
   }
 }
@@ -946,31 +985,121 @@ class _DropdownTile<T> extends StatelessWidget {
     required this.onChanged,
   });
 
+  String _labelOf(T? v) {
+    for (final item in items) {
+      if (item.value == v) {
+        final child = item.child;
+        return child is Text ? (child.data ?? '$v') : '$v';
+      }
+    }
+    return '$v';
+  }
+
+  /// The choices sheet. A bare [DropdownButton] never receives the D-pad ring,
+  /// so on a remote the row looked dead; this turns the whole tile into one
+  /// focus target and lists the options as focusable rows.
+  void _openChoices(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surfaceContainerHigh,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: AppColors.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Text(title, style: AppTheme.sectionTitle.copyWith(fontSize: 18)),
+              if (subtitle != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  subtitle!,
+                  style:
+                      AppTheme.metadata.copyWith(color: AppColors.primaryLight),
+                ),
+              ],
+              const SizedBox(height: 12),
+              for (final item in items)
+                TvButton(
+                  autofocus: item.value == value,
+                  borderRadius: 12,
+                  semanticLabel: _labelOf(item.value),
+                  onSelect: () {
+                    Navigator.pop(ctx);
+                    onChanged(item.value);
+                  },
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      _labelOf(item.value),
+                      style: AppTheme.cardTitle.copyWith(fontSize: 15),
+                    ),
+                    trailing: item.value == value
+                        ? const Icon(Icons.check_rounded,
+                            color: AppColors.primaryLight)
+                        : null,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      onChanged(item.value);
+                    },
+                  ),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-      leading: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: AppColors.primaryLight.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(10),
+    final label = _labelOf(value);
+    return TvButton(
+      onSelect: () => _openChoices(context),
+      semanticLabel: '$title: $label',
+      borderRadius: 14,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: AppColors.primaryLight.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: AppColors.primaryLight, size: 18),
         ),
-        child: Icon(icon, color: AppColors.primaryLight, size: 18),
-      ),
-      title: Text(title, style: AppTheme.cardTitle.copyWith(fontSize: 14)),
-      subtitle: subtitle != null
-          ? Text(subtitle!, style: AppTheme.metadata.copyWith(fontSize: 12))
-          : null,
-      trailing: DropdownButton<T>(
-        value: value,
-        items: items,
-        onChanged: onChanged,
-        underline: const SizedBox(),
-        dropdownColor: AppColors.surfaceContainerHigh,
-        style: AppTheme.cardTitle.copyWith(fontSize: 13),
-        iconEnabledColor: AppColors.onSurfaceVariant,
+        title: Text(title, style: AppTheme.cardTitle.copyWith(fontSize: 14)),
+        subtitle: subtitle != null
+            ? Text(subtitle!, style: AppTheme.metadata.copyWith(fontSize: 12))
+            : null,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label,
+                style: AppTheme.cardTitle.copyWith(fontSize: 13),
+                overflow: TextOverflow.ellipsis),
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right_rounded,
+                color: AppColors.onSurfaceVariant),
+          ],
+        ),
+        onTap: () => _openChoices(context),
       ),
     );
   }
@@ -997,9 +1126,20 @@ class _SliderTile extends StatelessWidget {
     required this.onChanged,
   });
 
+  double get _step =>
+      divisions > 0 ? (max - min) / divisions : (max - min) / 20;
+
+  void _nudge(double delta) {
+    final next = (value + delta).clamp(min, max);
+    final snapped =
+        divisions > 0 ? min + ((next - min) / _step).round() * _step : next;
+    final clamped = snapped.clamp(min, max).toDouble();
+    if ((clamped - value).abs() > 0.0001) onChanged(clamped);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    final content = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
@@ -1050,6 +1190,28 @@ class _SliderTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+
+    // The Slider's own focus node draws no ring and swallows the D-pad, so the
+    // row becomes the focus target: Left/Right adjusts the value in place.
+    return TvFocusable(
+      borderRadius: 14,
+      semanticLabel: subtitle == null ? title : '$title, $subtitle',
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+          return KeyEventResult.ignored;
+        }
+        if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+          _nudge(_step);
+          return KeyEventResult.handled;
+        }
+        if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+          _nudge(-_step);
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: ExcludeFocusTraversal(child: content),
     );
   }
 }
@@ -1276,18 +1438,23 @@ class _GuestCtaBanner extends StatelessWidget {
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: onSignIn,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                child: TvButton(
+                  onSelect: onSignIn,
+                  semanticLabel: 'Sign in with Google',
+                  borderRadius: 12,
+                  child: FilledButton.icon(
+                    onPressed: onSignIn,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    icon: const Icon(Icons.login_rounded, size: 18),
+                    label: const Text('Sign In with Google',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
                   ),
-                  icon: const Icon(Icons.login_rounded, size: 18),
-                  label: const Text('Sign In with Google',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ),
             ],

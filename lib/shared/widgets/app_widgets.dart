@@ -55,10 +55,11 @@ class FilterChipWidget extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isActive ? AppColors.primary : AppColors.surfaceContainerLow,
+          color:
+              isActive ? AppColors.accentTint : AppColors.surfaceContainerLow,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: isActive ? AppColors.primary : AppColors.outlineVariant,
+            color: isActive ? AppColors.accentBorder : AppColors.outlineVariant,
             width: 1,
           ),
         ),
@@ -66,7 +67,7 @@ class FilterChipWidget extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (isActive) ...[
-              const Icon(Icons.check, size: 14, color: AppColors.white),
+              const Icon(Icons.check, size: 14, color: AppColors.primaryLight),
               const SizedBox(width: 4),
             ],
             Text(
@@ -75,7 +76,9 @@ class FilterChipWidget extends StatelessWidget {
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.1,
-                color: isActive ? AppColors.white : AppColors.onSurfaceVariant,
+                color: isActive
+                    ? AppColors.primaryLight
+                    : AppColors.onSurfaceVariant,
               ),
             ),
           ],

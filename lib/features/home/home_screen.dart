@@ -33,9 +33,10 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final PageController _heroController = PageController();
   Timer? _heroAutoScrollTimer;
+  bool _traktSyncing = false;
 
   /// Subtree handle for the hero carousel: its `hasFocus` is true whenever a
   /// remote is parked on anything inside, which is what stops auto-rotation.
@@ -72,22 +73,41 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _startHeroAutoScroll();
     // Load data from provider
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<MovieProvider>().loadHome();
-      final auth = context.read<AuthService>();
-      final settings = context.read<SettingsService>();
-      if (auth.isLoggedIn &&
-          auth.accessToken != null &&
-          (settings.syncWatchHistory || settings.syncWatchlist)) {
-        context.read<LibraryService>().syncFromTrakt(
-              auth.accessToken!,
-              history: settings.syncWatchHistory,
-              watchlist: settings.syncWatchlist,
-            );
-      }
+      _syncFromTrakt();
     });
+  }
+
+  /// Pulls history/watchlist whenever this device comes back to the front —
+  /// a TV that is left on otherwise never sees what was watched on a phone.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _syncFromTrakt();
+  }
+
+  Future<void> _syncFromTrakt() async {
+    if (_traktSyncing) return;
+    final auth = context.read<AuthService>();
+    final settings = context.read<SettingsService>();
+    if (!auth.isLoggedIn ||
+        auth.accessToken == null ||
+        !(settings.syncWatchHistory || settings.syncWatchlist)) {
+      return;
+    }
+    _traktSyncing = true;
+    try {
+      await context.read<LibraryService>().syncFromTrakt(
+            auth.accessToken!,
+            history: settings.syncWatchHistory,
+            watchlist: settings.syncWatchlist,
+          );
+    } finally {
+      _traktSyncing = false;
+    }
   }
 
   void _startHeroAutoScroll() {
@@ -117,6 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _heroAutoScrollTimer?.cancel();
     _heroController.dispose();
     _heroFocusNode.dispose();
@@ -645,18 +666,25 @@ class _HeroCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
-                          color: AppColors.secondary,
+                          color: AppColors.accentTint,
                           borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: AppColors.accentBorder,
+                            width: 1,
+                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             const Icon(Icons.local_fire_department_rounded,
-                                color: AppColors.white, size: 12),
+                                color: AppColors.primaryLight, size: 12),
                             const SizedBox(width: 4),
                             Text(
                               'TRENDING #1 TODAY',
-                              style: AppTheme.badge.copyWith(fontSize: 10),
+                              style: AppTheme.badge.copyWith(
+                                fontSize: 10,
+                                color: AppColors.primaryLight,
+                              ),
                             ),
                           ],
                         ),
@@ -700,7 +728,10 @@ class _HeroCard extends StatelessWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: _WatchNowButton(movie: movie),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: _WatchNowButton(movie: movie),
+                          ),
                         ),
                         const SizedBox(width: 10),
                         TvFocusable(
@@ -787,22 +818,22 @@ class _WatchNowButton extends StatelessWidget {
           onTap: () => launchPlayer(context, movie),
           borderRadius: BorderRadius.circular(999),
           child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
             decoration: BoxDecoration(
               color: AppColors.secondary,
               borderRadius: BorderRadius.circular(999),
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 const Icon(Icons.play_arrow_rounded,
-                    color: AppColors.white, size: 20),
+                    color: AppColors.onSecondary, size: 18),
                 const SizedBox(width: 6),
                 Text(
                   'Watch Now',
                   style: AppTheme.badge.copyWith(
-                    fontSize: 14,
-                    color: AppColors.white,
+                    fontSize: 13,
+                    color: AppColors.onSecondary,
                     letterSpacing: 0.2,
                   ),
                 ),

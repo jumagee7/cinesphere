@@ -43,8 +43,7 @@ void main() {
     });
 
     test('the platform saying "TV" beats the geometry', () {
-      expect(
-          detectDeviceForm(const Size(960, 540), 2.0, nativeTv: true),
+      expect(detectDeviceForm(const Size(960, 540), 2.0, nativeTv: true),
           DeviceForm.tv);
     });
   });
@@ -104,8 +103,8 @@ void main() {
 
     test('phone reproduces the design baseline', () {
       final m = measure(const Size(360, 800));
-      expect(m.posterWidth, 150);
-      expect(m.landscapeWidth, 220);
+      expect(m.posterWidth, closeTo(138.46, 0.01));
+      expect(m.landscapeWidth, 200);
       expect(m.heroHeight, 480);
       expect(m.posterColumns, 2);
       expect(m.tileColumns, 3);
@@ -115,29 +114,29 @@ void main() {
 
     test('a landscape tablet grows cards but adds grid columns too', () {
       final m = measure(const Size(1280, 800));
-      expect(m.posterWidth, greaterThan(150));
-      expect(m.posterWidth, lessThanOrEqualTo(200));
+      expect(m.posterWidth, greaterThan(138));
+      expect(m.posterWidth, lessThanOrEqualTo(185));
       // Two columns of 620px of art is the "TV UI on a tablet" bug this stops.
-      expect(m.posterColumns, 6);
-      expect(m.tileColumns, 6);
-      expect(m.genreColumns, 4);
+      expect(m.posterColumns, 8);
+      expect(m.tileColumns, 7);
+      expect(m.genreColumns, 5);
       expect(m.heroHeight, lessThanOrEqualTo(560));
     });
 
     test('the TV layout keeps its own numbers whatever the size', () {
       final tv = measure(const Size(1920, 1080), couch: true);
-      expect(tv.posterWidth, 210);
-      expect(tv.landscapeWidth, 320);
-      expect(tv.rowGap, 18);
-      expect(tv.posterColumns, 2);
-      expect(tv.tileColumns, 3);
-      expect(tv.genreColumns, 2);
+      expect(tv.posterWidth, 178);
+      expect(tv.landscapeWidth, 272);
+      expect(tv.rowGap, 16);
+      expect(tv.posterColumns, 3);
+      expect(tv.tileColumns, 4);
+      expect(tv.genreColumns, 3);
       expect(tv.scrollCacheExtent, 900);
     });
 
     test('a pinned mobile layout keeps phone art on a wide canvas', () {
       final m = measure(const Size(1280, 800), mobile: true);
-      expect(m.posterWidth, 175);
+      expect(m.posterWidth, closeTo(161.54, 0.01));
       expect(m.posterColumns, 2);
       expect(m.tileColumns, 3);
       expect(m.genreColumns, 2);
@@ -149,12 +148,12 @@ void main() {
     late TestWidgetsFlutterBinding binding;
 
     setUp(() => binding = TestWidgetsFlutterBinding.ensureInitialized());
-    tearDown(() => binding.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, null));
+    tearDown(() =>
+        binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, null));
 
     test('leanback overrides a phone-sized canvas', () async {
-      binding.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (call) async {
+      binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,
+          (call) async {
         expect(call.method, 'isTelevision');
         return true;
       });
@@ -215,6 +214,6 @@ void main() {
 
     expect(metrics!.width, 1280);
     expect(form, DeviceForm.tablet);
-    expect(metrics!.posterColumns, 6);
+    expect(metrics!.posterColumns, 8);
   });
 }
