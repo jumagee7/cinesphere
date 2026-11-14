@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
@@ -1053,8 +1054,15 @@ class _SliderTile extends StatelessWidget {
   }
 }
 
-class _VersionTile extends StatelessWidget {
+class _VersionTile extends StatefulWidget {
   const _VersionTile();
+
+  @override
+  State<_VersionTile> createState() => _VersionTileState();
+}
+
+class _VersionTileState extends State<_VersionTile> {
+  final Future<PackageInfo> _info = PackageInfo.fromPlatform();
 
   @override
   Widget build(BuildContext context) {
@@ -1077,8 +1085,17 @@ class _VersionTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Vyro', style: AppTheme.cardTitle.copyWith(fontSize: 14)),
-              Text('Version 1.0.0 (Build 1)',
-                  style: AppTheme.metadata.copyWith(fontSize: 12)),
+              FutureBuilder<PackageInfo>(
+                future: _info,
+                builder: (context, snapshot) {
+                  final package = snapshot.data;
+                  final label = package == null
+                      ? 'Version'
+                      : 'Version ${package.version} (Build ${package.buildNumber})';
+                  return Text(label,
+                      style: AppTheme.metadata.copyWith(fontSize: 12));
+                },
+              ),
             ],
           ),
         ],
