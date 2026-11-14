@@ -243,6 +243,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   bool _controlsVisible = true;
   final GlobalKey _controlsKey = GlobalKey();
   Timer? _hideTimer;
+
+  /// Resting focus for the player surface. A remote never taps to dismiss the
+  /// chrome, so the auto-hide moves the ring here instead of leaving it on a
+  /// control that is about to fade out; the next D-pad press wakes the chrome
+  /// from this node.
+  final FocusNode _playerFocusNode =
+      FocusNode(debugLabel: 'CinePlayerSurface', skipTraversal: true);
+
+  /// The big play/pause control, so the ring can be restored to the obvious
+  /// starting point when the chrome comes back.
+  final FocusNode _playFocusNode = FocusNode(debugLabel: 'CinePlayerPlay');
+
+  /// Retry on the error card; the surface has no traversal candidates, so a
+  /// remote needs the ring parked here when playback fails.
+  final FocusNode _errorRetryFocusNode =
+      FocusNode(debugLabel: 'CinePlayerRetry');
+
   bool _isFullscreen = false;
   bool _isScrubbing = false;
   double _dragPositionSeconds = 0;
@@ -314,17 +331,26 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   _GestureKind _activeGestureKind = _GestureKind.brightness;
   double _gestureValue = 1.0;
 
+  /// Last playback flag seen by [_onTick]; used to arm the chrome auto-hide
+  /// once the decoder actually starts (play() is asynchronous).
+  bool _wasPlaying = false;
+
   // ── Quality Selection & Network Adaptation ──────────────────────────────
+  // The ladder is used by the adaptive engine and must only contain concrete,
+  // selectable variants — not the sentinel values auto/highest, which have no
+  // fixed bitrate and no place in the rung arithmetic.
   static const List<VideoQuality> _qualityLadder = [
-    VideoQuality.sd480,
-    VideoQuality.hd720,
-    VideoQuality.fullHd1080,
-    VideoQuality.uhd4k,
+    VideoQuality.sd480,    // rung 0
+    VideoQuality.hd720,    // rung 1
+    VideoQuality.fullHd1080, // rung 2
+    VideoQuality.uhd4k,    // rung 3
   ];
 
   VideoQuality _quality = VideoQuality.auto; // user preference
-  VideoQuality _linkQuality = VideoQuality.fullHd1080; // ceiling from link type
-  VideoQuality _servedQuality = VideoQuality.fullHd1080; // variant served now
+  // On TV we start lower and climb; on other devices the link type is set by
+  // the connectivity check that fires shortly after init.
+  VideoQuality _linkQuality = VideoQuality.hd720; // ceiling from link type
+  VideoQuality _servedQuality = VideoQuality.hd720; // variant served now
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   Timer? _qualitySampleTimer;
   DateTime? _lastQualitySampleAt;
@@ -353,8 +379,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   /// start only — reloads fetch fresh so a rotated playlist is picked up.
   String? _pendingManifest;
 
-  VideoQuality get _preferredQuality =>
-      _quality == VideoQuality.auto ? _linkQuality : _quality;
+  VideoQuality get _preferredQuality {
+    if (_quality == VideoQuality.auto) return VideoQuality.fullHd1080;
+    // highest means "use the best the link allows" — treat it as the top rung.
+    if (_quality == VideoQuality.highest) return VideoQuality.uhd4k;
+    return _quality;
+  }
 
   /// Quality adaptation only applies to network streams — local files and
   /// bundled assets can't be re-fetched at a lower bitrate.
@@ -370,12 +400,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         return 0;
       case VideoQuality.hd720:
         return 1;
-      case VideoQuality.uhd4k:
-        return 3;
-      case VideoQuality.auto:
       case VideoQuality.fullHd1080:
-      case VideoQuality.highest:
         return 2;
+      case VideoQuality.uhd4k:
+        // highest is treated as the ceiling rung so the sampler can climb all
+        // the way to 4K when the link allows it.
+      case VideoQuality.highest:
+        return 3;
+      // auto is not a concrete rung — callers should resolve it to
+      // _preferredQuality before calling _rungOf.
+      case VideoQuality.auto:
+        return 2; // safe fallback: 1080p
     }
   }
 
@@ -474,7 +509,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     VideoQuality linkQuality;
     if (results.contains(ConnectivityResult.wifi) ||
         results.contains(ConnectivityResult.ethernet)) {
-      linkQuality = VideoQuality.fullHd1080;
+      // TV boxes start at 720p and let the throughput sampler promote to 1080p
+      // once a large chunk has buffered cleanly, reducing crash-on-init risk.
+      linkQuality = _tvLayout ? VideoQuality.hd720 : VideoQuality.fullHd1080;
     } else if (results.contains(ConnectivityResult.mobile)) {
       linkQuality = VideoQuality.hd720;
     } else {
@@ -755,7 +792,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     if (_quality == VideoQuality.auto) {
       return 'Auto (${_qualityShortName(_servedQuality)})';
     }
-    if (_rungOf(_servedQuality) < _rungOf(_quality)) {
+    // Show "Requested → Actual" when the adaptive engine had to step down.
+    if (_rungOf(_servedQuality) < _rungOf(_preferredQuality)) {
       return '${_qualityShortName(_quality)} → ${_qualityShortName(_servedQuality)}';
     }
     return _qualityShortName(_quality);
@@ -766,8 +804,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       case VideoQuality.uhd4k:
         return '4K';
       case VideoQuality.fullHd1080:
-      case VideoQuality.highest:
         return '1080p';
+      case VideoQuality.highest:
+        return 'Best';
       case VideoQuality.hd720:
         return '720p';
       case VideoQuality.sd480:
@@ -1140,8 +1179,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    // Initialize brightness with saved device preference (defaults to 40% = 0.40)
-    final savedBrightness = settingsService.playerBrightness;
+    // Initialize brightness with saved device preference (defaults to 40% =
+    // 0.40). A TV has no swipe control and its panel settings own the picture,
+    // so the player always runs at full brightness there.
+    final savedBrightness = _tvLayout ? 1.0 : settingsService.playerBrightness;
     _brightness = savedBrightness;
     _gestureValue = savedBrightness;
     try {
@@ -1315,8 +1356,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     // Don't treat the initial buffer as a stall.
     final grace = DateTime.now().add(const Duration(seconds: 5));
     if (grace.isAfter(_qualityGraceUntil)) _qualityGraceUntil = grace;
-    controller.initialize().then((_) {
-      if (!mounted) return;
+    // A CDN that accepts the connection then never sends a manifest leaves
+    // ExoPlayer's prepare pending forever — the spinner would just sit there.
+    // Fail into the normal retry/error path instead.
+    controller.initialize().timeout(const Duration(seconds: 25)).then((_) {
+      // A retry or source swap may already have attached a newer controller;
+      // attaching listeners to this stale one would fight it for the surface.
+      if (!mounted || _controller != controller) return;
       _initRetryCount = 0;
       DiagnosticService.instance.success(
         'VideoPlayer',
@@ -1359,10 +1405,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         controller.play();
         _schedulePlaybackKick(controller);
       }
+      // Start the TV ring on play so the remote has an obvious first action;
+      // the auto-hide then moves it to the surface once the film is running.
+      if (_tvLayout) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _error == null) _playFocusNode.requestFocus();
+        });
+      }
       _scheduleHide();
       _startScrobbling();
     }).catchError((Object err) {
-      if (!mounted) return;
+      if (!mounted || _controller != controller) return;
       DiagnosticService.instance.error(
         'VideoPlayer',
         'VideoPlayer initialization error (attempt ${_initRetryCount + 1}): $err',
@@ -1373,6 +1426,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       // Retry automatically up to 2 times with a 1.2s delay before giving up.
       if (_initRetryCount < 2 && networkUrl != null) {
         _initRetryCount++;
+        // A TV box fails a too-heavy variant the same way twice: its decoder
+        // gives up in prepare(). Drop a rung per retry so the next attempt
+        // asks the proxy for something the SoC can actually decode.
+        if (_tvLayout && _rungOf(_servedQuality) > 0) {
+          final next = _qualityAtRung(_rungOf(_servedQuality) - 1);
+          _servedQuality = next;
+          StreamProxyService.instance.setQualityTarget(next);
+          DiagnosticService.instance.warning(
+            'VideoPlayer',
+            'TV retry at a lower quality: ${_qualityShortName(next)}',
+          );
+        }
         DiagnosticService.instance.warning(
           'VideoPlayer',
           'Source error — retrying in 1.2s (attempt $_initRetryCount/2)…',
@@ -1388,7 +1453,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         return;
       }
 
-      setState(() => _error = err.toString());
+      // Readable for a 10-foot screen; the raw exception is in the logs.
+      _showPlaybackError(
+          'This stream could not start on this device. Retry, or pick another source.');
+    });
+  }
+
+  void _showPlaybackError(String message) {
+    setState(() => _error = message);
+    if (!_tvLayout) return;
+    // The surface has no traversal candidates, so park the remote on Retry.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _error != null) _errorRetryFocusNode.requestFocus();
     });
   }
 
@@ -1396,6 +1472,28 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     if (!mounted) return;
     final c = _controller;
     if (c != null && c.value.isInitialized) {
+      // play() only *requests* playback, so the hide timer armed at init found
+      // isPlaying == false and bailed. Arm it on the real transition instead,
+      // otherwise TV users (who never tap) keep the chrome forever.
+      final playing = c.value.isPlaying;
+      if (playing != _wasPlaying) {
+        _wasPlaying = playing;
+        if (playing && _controlsVisible) _scheduleHide();
+      }
+      // A decoder/native failure after prepare (unsupported codec, corrupt
+      // segment) leaves the last frame frozen with no way forward. Surface it
+      // as the normal error card instead of a dead spinner.
+      final fatal = c.value.errorDescription;
+      if (fatal != null && fatal.isNotEmpty && _error == null) {
+        DiagnosticService.instance.error(
+          'VideoPlayer',
+          'Playback failed after start: $fatal',
+        );
+        _wantsPlayback = false;
+        _showPlaybackError(
+            'This stream could not be decoded on this device. Retry, or go back and pick another source.');
+        return;
+      }
       _syncPipState();
       _trackPlaybackHealth(c.value);
       final settings = context.read<SettingsService>();
@@ -1693,14 +1791,65 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _hideTimer?.cancel();
     if (_controller?.value.isPlaying != true) return;
     _hideTimer = Timer(_theme.controlsAutoHide, () {
-      if (mounted &&
-          _controller?.value.isPlaying == true &&
-          !_isScrubbing &&
-          !_boostActive &&
-          !_focusInControls()) {
-        setState(() => _controlsVisible = false);
+      if (!mounted ||
+          _controller?.value.isPlaying != true ||
+          _isScrubbing ||
+          _boostActive) {
+        return;
       }
+      if (_tvLayout) {
+        // A remote never taps to dismiss: fold the chrome away even while the
+        // ring sits on a control, and park the ring on the surface so it is
+        // not left on an invisible button.
+        _playerFocusNode.requestFocus();
+      } else if (_focusInControls()) {
+        return;
+      }
+      setState(() => _controlsVisible = false);
     });
+  }
+
+  /// With the chrome hidden the surface owns the remote: the first D-pad press
+  /// brings the controls back (and puts the ring on play), instead of moving
+  /// an invisible ring around. A select press on the surface toggles playback.
+  KeyEventResult _onPlayerKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (_error != null) return KeyEventResult.ignored;
+    final isActivate = event.logicalKey == LogicalKeyboardKey.select ||
+        event.logicalKey == LogicalKeyboardKey.gameButtonA ||
+        event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter;
+    if (!_controlsVisible) {
+      final navKeys = <LogicalKeyboardKey>{
+        LogicalKeyboardKey.arrowUp,
+        LogicalKeyboardKey.arrowDown,
+        LogicalKeyboardKey.arrowLeft,
+        LogicalKeyboardKey.arrowRight,
+        LogicalKeyboardKey.select,
+        LogicalKeyboardKey.gameButtonA,
+        LogicalKeyboardKey.enter,
+        LogicalKeyboardKey.numpadEnter,
+        LogicalKeyboardKey.mediaPlayPause,
+      };
+      if (!navKeys.contains(event.logicalKey)) return KeyEventResult.ignored;
+      _showControls();
+      // The controls are still excluded from traversal on this frame; wait for
+      // the rebuild before handing the ring back to play.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _controlsVisible) _playFocusNode.requestFocus();
+      });
+      return KeyEventResult.handled;
+    }
+    if (isActivate && node.hasPrimaryFocus) {
+      _togglePlay();
+      return KeyEventResult.handled;
+    }
+    // Remote activity restarts the fade clock, so the chrome only disappears
+    // once the viewer has actually stopped pressing keys.
+    if (_controlsVisible) _scheduleHide();
+    return KeyEventResult.ignored;
   }
 
   void _showControls() {
@@ -2296,6 +2445,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                 ),
                 const Divider(color: Colors.white12, height: 1),
                 ...[
+                  VideoQuality.highest,
                   VideoQuality.uhd4k,
                   VideoQuality.fullHd1080,
                   VideoQuality.hd720,
@@ -2319,13 +2469,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                       ),
                     ),
                     subtitle: Text(
-                      q == VideoQuality.uhd4k
-                          ? 'Ultra High Definition • Highest quality'
-                          : (q == VideoQuality.fullHd1080
-                              ? 'High definition • Crisp detail'
-                              : (q == VideoQuality.hd720
-                                  ? 'Standard HD • Smooth streaming'
-                                  : 'Standard definition • Lower data usage')),
+                      q == VideoQuality.highest
+                          ? 'Best track the stream offers • No cap'
+                          : (q == VideoQuality.uhd4k
+                              ? 'Ultra High Definition • Highest quality'
+                              : (q == VideoQuality.fullHd1080
+                                  ? 'High definition • Crisp detail'
+                                  : (q == VideoQuality.hd720
+                                      ? 'Standard HD • Smooth streaming'
+                                      : 'Standard definition • Lower data usage'))),
                       style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.6),
                           fontSize: 11),
@@ -2346,7 +2498,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       settingsService.setStreamQuality(result);
       _slowSamples = 0;
       _fastSamples = 0;
-      final target = result == VideoQuality.auto ? _linkQuality : result;
+      // _preferredQuality now reflects the new _quality value.
+      final target = _preferredQuality;
       if (_rungOf(target) != _rungOf(_servedQuality)) {
         _setServedQuality(target);
       } else {
@@ -2933,6 +3086,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _qualitySampleTimer?.cancel();
     _stallWatchdogTimer?.cancel();
     _connectivitySubscription?.cancel();
+    _playerFocusNode.dispose();
+    _playFocusNode.dispose();
+    _errorRetryFocusNode.dispose();
     try {
       ScreenBrightness.instance.resetApplicationScreenBrightness();
     } catch (_) {}
@@ -2986,58 +3142,66 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           body: LayoutBuilder(builder: (context, constraints) {
             final screenWidth = constraints.maxWidth;
             final screenHeight = constraints.maxHeight;
-            return Stack(
-              fit: StackFit.expand,
-              children: [
-                _buildVideoSurface(),
-                // Software brightness dimmer overlay for uniform cross-platform dimming
-                if (!_inPip)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: Container(
-                        color: Colors.black.withValues(
-                          alpha: (1.0 - _brightness).clamp(0.0, 0.85),
+            return Focus(
+              focusNode: _playerFocusNode,
+              autofocus: _tvLayout,
+              onKeyEvent: _onPlayerKey,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _buildVideoSurface(),
+                  // Software brightness dimmer overlay for uniform cross-platform dimming
+                  if (!_inPip)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: Container(
+                          color: Colors.black.withValues(
+                            alpha: (1.0 - _brightness).clamp(0.0, 0.85),
+                          ),
                         ),
                       ),
                     ),
+                  if (_rippleSide != null)
+                    _SkipRipple(
+                      key: ValueKey('ripple-$_rippleId'),
+                      side: _rippleSide!,
+                      seconds: _theme.skipStep.inSeconds,
+                      accent: _theme.accent,
+                    ),
+                  if (_boostActive) _buildBoostIndicator(),
+                  if (_error != null) _buildError(),
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: _theme.enableDoubleTapSkip
+                          ? _toggleControls
+                          : _debouncedToggleControls,
+                      onDoubleTapDown: _theme.enableDoubleTapSkip
+                          ? (d) => _onDoubleTapDown(d, screenWidth)
+                          : null,
+                      onLongPressStart: _theme.enableLongPressBoost
+                          ? (_) => _onLongPressStart()
+                          : null,
+                      onLongPressEnd: _theme.enableLongPressBoost
+                          ? (_) => _onLongPressEnd()
+                          : null,
+                      onLongPressCancel:
+                          _theme.enableLongPressBoost ? _onLongPressEnd : null,
+                      onVerticalDragStart: _tvLayout
+                          ? null
+                          : (d) => _onVerticalDragStart(
+                              d, screenWidth, screenHeight),
+                      onVerticalDragUpdate: _tvLayout
+                          ? null
+                          : (d) => _onVerticalDragUpdate(d, screenHeight),
+                      onVerticalDragEnd: _tvLayout ? null : _onVerticalDragEnd,
+                    ),
                   ),
-                if (_rippleSide != null)
-                  _SkipRipple(
-                    key: ValueKey('ripple-$_rippleId'),
-                    side: _rippleSide!,
-                    seconds: _theme.skipStep.inSeconds,
-                    accent: _theme.accent,
-                  ),
-                if (_boostActive) _buildBoostIndicator(),
-                if (_error != null) _buildError(),
-                Positioned.fill(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onTap: _theme.enableDoubleTapSkip
-                        ? _toggleControls
-                        : _debouncedToggleControls,
-                    onDoubleTapDown: _theme.enableDoubleTapSkip
-                        ? (d) => _onDoubleTapDown(d, screenWidth)
-                        : null,
-                    onLongPressStart: _theme.enableLongPressBoost
-                        ? (_) => _onLongPressStart()
-                        : null,
-                    onLongPressEnd: _theme.enableLongPressBoost
-                        ? (_) => _onLongPressEnd()
-                        : null,
-                    onLongPressCancel:
-                        _theme.enableLongPressBoost ? _onLongPressEnd : null,
-                    onVerticalDragStart: (d) =>
-                        _onVerticalDragStart(d, screenWidth, screenHeight),
-                    onVerticalDragUpdate: (d) =>
-                        _onVerticalDragUpdate(d, screenHeight),
-                    onVerticalDragEnd: _onVerticalDragEnd,
-                  ),
-                ),
-                if (_showGestureHud) _buildGestureHud(),
-                if (_isBuffering) _buildBufferingIndicator(),
-                if (_error == null && !_inPip) _buildControlsOverlay(),
-              ],
+                  if (_showGestureHud) _buildGestureHud(),
+                  if (_isBuffering) _buildBufferingIndicator(),
+                  if (_error == null && !_inPip) _buildControlsOverlay(),
+                ],
+              ),
             );
           }),
         ));
@@ -3460,10 +3624,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
             child: Align(
               alignment: Alignment.topCenter,
               child: AnimatedOpacity(
-                opacity: visible ? 1.0 : 0.45,
+                // Phones keep the title bar ghosted so a tap target stays
+                // visible; on a TV a half-lit bar is just UI that never went
+                // away, so it fades out completely.
+                opacity: visible ? 1.0 : (_tvLayout ? 0.0 : 0.45),
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOut,
-                child: _buildTopBar(),
+                // Fully transparent on TV, so it must not stay tappable or
+                // focusable while the chrome is away.
+                child: ExcludeFocusTraversal(
+                  excluding: _tvLayout && !visible,
+                  child: IgnorePointer(
+                    ignoring: _tvLayout && !visible,
+                    child: _buildTopBar(),
+                  ),
+                ),
               ),
             ),
           ),
@@ -3874,9 +4049,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           ),
         const SizedBox(width: 28),
         TvFocusable(
+          focusNode: _playFocusNode,
           onSelect: _togglePlay,
           semanticLabel: playing ? 'Pause' : 'Play',
-          autofocus: _tvLayout,
           scale: 1.08,
           borderRadius: 36,
           child: GestureDetector(
@@ -3885,15 +4060,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
               width: 72,
               height: 72,
               decoration: BoxDecoration(
-                color: _theme.accent.withValues(alpha: 0.9),
+                color: AppColors.primary.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: _theme.accent.withValues(alpha: 0.4),
-                    blurRadius: 24,
-                    spreadRadius: 2,
-                  ),
-                ],
+                border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.55),
+                  width: 1.5,
+                ),
               ),
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 180),
@@ -3902,7 +4074,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                 child: Icon(
                   playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
                   key: ValueKey(playing),
-                  color: Colors.white,
+                  color: AppColors.primaryLight,
                   size: 40,
                 ),
               ),
@@ -4192,6 +4364,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                   style: TextButton.styleFrom(foregroundColor: Colors.white),
                 ),
                 FilledButton.icon(
+                  focusNode: _errorRetryFocusNode,
                   onPressed: () {
                     _initRetryCount = 0;
                     _controller?.removeListener(_onTick);

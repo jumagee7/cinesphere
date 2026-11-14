@@ -671,6 +671,11 @@ class DownloadEngine {
           '$hlsDir/${video.initName}',
           for (final job in video.segments) '$hlsDir/${job.localName}',
         ]);
+        if (!await _hasBytes(outPath)) {
+          await _discardFile(outPath);
+          _dlog('⚠️ Concatenated file came out empty; keeping staged playlist');
+          return null;
+        }
         await _cleanupStaging(hlsDir, keep: outPath);
         return outPath;
       }
@@ -702,7 +707,15 @@ class DownloadEngine {
         } catch (_) {}
       }
 
-      if (!muxed) return null;
+      if (!muxed) {
+        await _discardFile(outPath);
+        return null;
+      }
+      if (!await _hasBytes(outPath)) {
+        await _discardFile(outPath);
+        _dlog('⚠️ Remux produced an empty file; keeping staged playlist');
+        return null;
+      }
       await _cleanupStaging(hlsDir, keep: outPath);
       return outPath;
     } catch (e) {
@@ -727,6 +740,48 @@ class DownloadEngine {
       await sink.flush();
       await sink.close();
     }
+  }
+
+  /// True when [path] exists and holds bytes.
+  static Future<bool> _hasBytes(String path) async {
+    try {
+      return await File(path).length() > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Bytes a finished download occupies on disk.
+  ///
+  /// A staged playlist path points at `index.m3u8` inside the folder that
+  /// holds the segments, so the whole folder is what the user actually owns.
+  static Future<int> savedMediaBytes(String path) async {
+    try {
+      final f = File(path);
+      if (await f.exists()) {
+        if (!path.toLowerCase().endsWith('.m3u8')) return await f.length();
+      }
+      final dir = f.parent;
+      if (!await dir.exists()) return 0;
+      var total = 0;
+      await for (final entity in dir.list(recursive: true)) {
+        if (entity is! File) continue;
+        try {
+          total += await entity.length();
+        } catch (_) {}
+      }
+      return total;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Removes a media file that turned out to be empty or unusable.
+  static Future<void> _discardFile(String path) async {
+    try {
+      final f = File(path);
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
   }
 
   /// Removes staging artifacts, keeping the finished media file.

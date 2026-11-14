@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Paths exposed by the FileProvider used to deliver the downloaded APK to
+  the system package installer.  external-files-path covers
+  getExternalFilesDir() (the preferred download target) and cache-path
+  covers getCacheDir() (the fallback when external storage is unavailable).
+-->
+<paths>
+    <external-files-path name="external_files" path="." />
+    <cache-path name="cache" path="." />
+    <external-cache-path name="external_cache" path="." />
+</paths>

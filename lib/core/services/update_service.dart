@@ -1,7 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 
 /// A newer build published on GitHub.
 class AppUpdate {
@@ -34,6 +39,9 @@ class UpdateService {
   static const String _mainPubspec =
       'https://raw.githubusercontent.com/$repo/main/pubspec.yaml';
 
+  static const MethodChannel _installChannel =
+      MethodChannel('cinesphere/install');
+
   static Future<AppUpdate?> check(
       {Duration timeout = const Duration(seconds: 8)}) async {
     final current = await _currentVersion();
@@ -58,6 +66,76 @@ class UpdateService {
       notes: '',
       url: _releasesPage,
     );
+  }
+
+  /// Downloads [url] to a temp file, calling [onProgress] with 0.0–1.0.
+  /// Returns the local file path on success, or throws on error.
+  /// Only available on Android; throws [UnsupportedError] on other platforms.
+  static Future<String> downloadApk(
+    String url, {
+    required void Function(double progress) onProgress,
+    CancelToken? cancelToken,
+  }) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      throw UnsupportedError('APK download is only supported on Android.');
+    }
+    final dir = await getExternalStorageDirectory() ??
+        await getApplicationCacheDirectory();
+    final file = File('${dir.path}/vyro_update.apk');
+    if (await file.exists()) await file.delete();
+
+    final dio = Dio();
+    await dio.download(
+      url,
+      file.path,
+      cancelToken: cancelToken,
+      onReceiveProgress: (received, total) {
+        if (total > 0) onProgress(received / total);
+      },
+      options: Options(
+        headers: {'Accept': 'application/octet-stream'},
+        receiveTimeout: const Duration(minutes: 10),
+      ),
+    );
+    return file.path;
+  }
+
+  /// Returns true when the user has already granted the install-unknown-sources
+  /// permission, or the platform does not need it (< Android 8).
+  static Future<bool> hasInstallPermission() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return false;
+    }
+    try {
+      final result =
+          await _installChannel.invokeMethod<bool>('hasInstallPermission');
+      return result ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Opens the system Settings page that lets the user grant
+  /// "Install unknown apps" for this package. Returns once the page is shown;
+  /// the actual grant/deny happens asynchronously in Settings.
+  static Future<void> openInstallPermissionSettings() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      await _installChannel
+          .invokeMethod<void>('openInstallPermissionSettings');
+    } catch (_) {}
+  }
+
+  /// Launches the system APK installer for the file at [apkPath].
+  /// Requires the install-unknown-sources permission on Android 8+;
+  /// check [hasInstallPermission] first.
+  static Future<void> installApk(String apkPath) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      await _installChannel.invokeMethod<void>('installApk', {'path': apkPath});
+    } catch (e) {
+      throw Exception('Could not launch APK installer: $e');
+    }
   }
 
   static Future<String?> _currentVersion() async {

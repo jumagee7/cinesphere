@@ -17,6 +17,7 @@ object TsMuxer {
     fun mux(videoPath: String, audioPath: String?, outputPath: String): Boolean {
         val extractors = mutableListOf<MediaExtractor>()
         var muxer: MediaMuxer? = null
+        var success = false
         try {
             val out = File(outputPath)
             out.parentFile?.mkdirs()
@@ -49,16 +50,17 @@ object TsMuxer {
             val buffer = ByteBuffer.allocateDirect(BUFFER_SIZE)
             val info = MediaCodec.BufferInfo()
 
-            writeTrack(video.first, videoOut, buffer, info, muxer)
-            if (audio != null) writeTrack(audio.first, audioOut, buffer, info, muxer)
+            var written = writeTrack(video.first, videoOut, buffer, info, muxer)
+            if (audio != null) {
+                written += writeTrack(audio.first, audioOut, buffer, info, muxer)
+            }
 
             muxer.stop()
-            return out.length() > 0
+            // A media extractor can open a container yet yield no samples; the
+            // muxer then emits a header-only file that plays as 0:00.
+            success = written > 0 && out.length() > 0
+            return success
         } catch (_: Exception) {
-            try {
-                File(outputPath).delete()
-            } catch (_: Exception) {
-            }
             return false
         } finally {
             try {
@@ -68,6 +70,14 @@ object TsMuxer {
             extractors.forEach {
                 try {
                     it.release()
+                } catch (_: Exception) {
+                }
+            }
+            if (!success) {
+                // MediaMuxer creates the file eagerly, so a failed remux would
+                // otherwise leave an empty .mp4 next to the staged playlist.
+                try {
+                    File(outputPath).delete()
                 } catch (_: Exception) {
                 }
             }
@@ -104,7 +114,8 @@ object TsMuxer {
         buffer: ByteBuffer,
         info: MediaCodec.BufferInfo,
         muxer: MediaMuxer
-    ) {
+    ): Int {
+        var samples = 0
         while (true) {
             val size = extractor.readSampleData(buffer, 0)
             if (size < 0) break
@@ -119,7 +130,9 @@ object TsMuxer {
                 0
             }
             muxer.writeSampleData(outTrack, buffer, info)
+            samples++
             extractor.advance()
         }
+        return samples
     }
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
@@ -151,7 +153,54 @@ class _ExploreScreenState extends State<ExploreScreen> {
   /// own — on a TV the caret alone is invisible and the D-pad looks like it lost
   /// its way. Rebuild so the outline below can light up with it.
   void _onSearchFocusChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+    // On TV the virtual keyboard needs app focus released so it can capture
+    // key events. We unfocus the field, let the OS IME open (which is what
+    // actually takes input), and re-request focus once the keyboard is gone.
+    if (_searchFocusNode.hasFocus &&
+        context.read<SettingsService>().useTvLayout) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        // Release focus so the OS IME can own the keyboard.
+        _searchFocusNode.unfocus();
+        _showTvKeyboard();
+        // Watch for the keyboard to dismiss and re-claim focus then.
+        _listenForKeyboardDismiss();
+      });
+    }
+  }
+
+  /// Polls `MediaQuery.viewInsets.bottom` once a frame until the keyboard has
+  /// closed, then gives focus back to the search field so D-pad arrows work.
+  void _listenForKeyboardDismiss() {
+    bool keyboardWasOpen = false;
+    void check(Duration _) {
+      if (!mounted) return;
+      final keyboardOpen =
+          MediaQuery.of(context).viewInsets.bottom > 50;
+      if (keyboardOpen) {
+        keyboardWasOpen = true;
+      } else if (keyboardWasOpen) {
+        // Keyboard just closed — take focus back for arrow-key navigation.
+        if (!_searchFocusNode.hasFocus) {
+          _searchFocusNode.requestFocus();
+        }
+        return; // stop scheduling
+      }
+      WidgetsBinding.instance.addPostFrameCallback(check);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback(check);
+  }
+
+  void _showTvKeyboard() {
+    if (!mounted) return;
+    unawaited(
+      SystemChannels.textInput.invokeMethod<void>('TextInput.show').catchError(
+            (_) {},
+          ),
+    );
   }
 
   /// A text field answers the arrow keys itself — they move the caret — and it
@@ -161,6 +210,15 @@ class _ExploreScreenState extends State<ExploreScreen> {
   KeyEventResult _onSearchArrow(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
+    }
+    // OK on a remote arrives as `select`, which the app maps to ActivateIntent —
+    // an intent the text field has no action for, so the press would vanish.
+    // Use it to (re)raise the IME; that is the only "start typing" gesture a
+    // D-pad has.
+    if (event.logicalKey == LogicalKeyboardKey.select ||
+        event.logicalKey == LogicalKeyboardKey.gameButtonA) {
+      _showTvKeyboard();
+      return KeyEventResult.handled;
     }
     final direction = switch (event.logicalKey) {
       LogicalKeyboardKey.arrowUp => TraversalDirection.up,

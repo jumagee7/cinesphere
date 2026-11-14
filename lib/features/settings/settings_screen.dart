@@ -12,6 +12,8 @@ import '../../core/services/auth_service.dart';
 import '../../core/services/library_service.dart';
 import '../../core/services/device_form.dart';
 import '../../shared/widgets/tv_focus.dart';
+import '../../shared/widgets/update_dialog.dart';
+import '../../core/services/update_service.dart';
 import '../auth/trakt_auth_screen.dart';
 import 'layout_choice_prompt.dart';
 import 'diagnostics_screen.dart';
@@ -25,6 +27,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final ScrollController _scroll = ScrollController();
+  bool _checkingUpdate = false;
 
   @override
   void dispose() {
@@ -730,6 +733,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // ─── About ───────────────────────────────────────────────────────────────
 
+  Future<void> _checkForUpdates() async {
+    if (_checkingUpdate) return;
+    setState(() => _checkingUpdate = true);
+    try {
+      final update = await UpdateService.check(
+        timeout: const Duration(seconds: 10),
+      );
+      if (!mounted) return;
+      if (update == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Vyro is up to date.'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: AppColors.surfaceContainerHigh,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+      } else {
+        await showAppUpdateDialog(context, update);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Could not reach the update server.'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.surfaceContainerHigh,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _checkingUpdate = false);
+    }
+  }
+
   Widget _buildAboutSection(BuildContext context) {
     return _Section(
       title: 'About',
@@ -777,6 +819,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
               MaterialPageRoute(builder: (_) => const DiagnosticsScreen()),
             );
           },
+        ),
+        _SettingsTile(
+          icon: Icons.system_update_rounded,
+          iconColor: AppColors.primaryLight,
+          title: 'Check for Updates',
+          subtitle: 'Look for a newer version of Vyro on GitHub',
+          trailing: _checkingUpdate
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.primaryLight,
+                  ),
+                )
+              : const Icon(Icons.refresh_rounded,
+                  color: AppColors.onSurfaceVariant),
+          onTap: _checkingUpdate ? null : _checkForUpdates,
         ),
         const _VersionTile(),
       ],

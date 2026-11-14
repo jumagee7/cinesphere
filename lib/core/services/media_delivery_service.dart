@@ -730,6 +730,21 @@ class MediaDeliveryService extends ChangeNotifier {
     );
     if (savedPath.isNotEmpty) {
       await _persistDownloadPath(id, savedPath);
+      // The transfer reports bytes pulled, but the file on disk is what the
+      // user sees; a folded MP4 also drops the segment overhead.
+      final bytes = await DownloadEngine.savedMediaBytes(savedPath);
+      final current = _byId(id);
+      if (current != null && bytes > 0) {
+        _updateItem(
+          id,
+          current.copyWith(
+            size: _formatBytes(bytes),
+            sizeMb: (bytes / (1024 * 1024)).ceil(),
+            downloadedBytes: bytes,
+            totalBytes: bytes,
+          ),
+        );
+      }
     }
   }
 
@@ -1003,6 +1018,16 @@ class MediaDeliveryService extends ChangeNotifier {
   String _formatMb(int mb) {
     if (mb >= 1024) return '${(mb / 1024).toStringAsFixed(1)} GB';
     return '$mb MB';
+  }
+
+  static String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+    }
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(0)} MB';
+    }
+    return '${(bytes / 1024).toStringAsFixed(0)} KB';
   }
 
   static void _dlog(String msg, {LogLevel level = LogLevel.info}) {

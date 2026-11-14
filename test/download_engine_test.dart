@@ -268,8 +268,7 @@ void main() {
     expect(
       DownloadEngine.downloadPathIn(base, id: '42', title: 'Dune: Part Two'),
       '$base/Movies/Dune Part Two.mp4',
-    );
-    expect(
+    );    expect(
       DownloadEngine.downloadPathIn(
         base,
         id: '7',
@@ -302,5 +301,24 @@ void main() {
       DownloadEngine.hlsStagingDirIn(base, id: '42', title: 'Heat'),
       '$base/.staging/Heat',
     );
+  });
+
+  test('savedMediaBytes reports the size of a single finished file', () async {
+    final file = File('${tempDir.path}/movie.mp4')
+      ..writeAsBytesSync(List<int>.filled(2048, 1));
+
+    expect(await DownloadEngine.savedMediaBytes(file.path), 2048);
+  });
+
+  test('savedMediaBytes counts the whole folder behind a staged playlist',
+      () async {
+    final dir = Directory('${tempDir.path}/Heat')..createSync();
+    File('${dir.path}/video.m3u8').writeAsStringSync('#EXTM3U');
+    File('${dir.path}/v_seg_0000.ts')
+        .writeAsBytesSync(List<int>.filled(1024, 1));
+
+    final bytes =
+        await DownloadEngine.savedMediaBytes('${dir.path}/video.m3u8');
+    expect(bytes, 1031);
   });
 }

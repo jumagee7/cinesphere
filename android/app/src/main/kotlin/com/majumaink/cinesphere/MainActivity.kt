@@ -15,9 +15,11 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Rational
 import androidx.annotation.RequiresApi
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 
 class MainActivity : FlutterFragmentActivity() {
     private val PIP_CHANNEL = "pip_channel"
@@ -29,6 +31,7 @@ class MainActivity : FlutterFragmentActivity() {
     private val EXTERNAL_PLAYER_CHANNEL = "cinesphere/external_player"
     private val DOWNLOAD_CHANNEL = "cinesphere/downloads"
     private val MEDIA_MUX_CHANNEL = "cinesphere/media_mux"
+    private val INSTALL_CHANNEL = "cinesphere/install"
 
     private var isPlaying = true
     private var enableAutoPip = false
@@ -248,7 +251,60 @@ class MainActivity : FlutterFragmentActivity() {
             }
         }
 
-        // 8. Register BroadcastReceiver for PiP remote actions
+        // 8. APK install channel
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, INSTALL_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "hasInstallPermission" -> {
+                    val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        packageManager.canRequestPackageInstalls()
+                    } else {
+                        true // Not required before Android 8
+                    }
+                    result.success(granted)
+                }
+                "openInstallPermissionSettings" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        val intent = Intent(
+                            android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:$packageName")
+                        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent)
+                    }
+                    result.success(null)
+                }
+                "installApk" -> {
+                    val path = call.argument<String>("path")
+                    if (path == null) {
+                        result.error("BAD_ARGS", "path is required", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val file = File(path)
+                        val uri: Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                            FileProvider.getUriForFile(
+                                this,
+                                "$packageName.fileprovider",
+                                file
+                            )
+                        } else {
+                            Uri.fromFile(file)
+                        }
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, "application/vnd.android.package-archive")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        startActivity(intent)
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("INSTALL_FAILED", e.message, null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // 9. Register BroadcastReceiver for PiP remote actions
         val filter = IntentFilter().apply {
             addAction(ACTION_PLAY)
             addAction(ACTION_PAUSE)
